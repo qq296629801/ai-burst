@@ -101,6 +101,17 @@ npm run dev
 
 对象存储未在本骨架中接入业务代码，可按需在 `backend` 增加 MinIO 客户端与配置。
 
+### 编译报错 `TypeTag :: UNKNOWN` / `ExceptionInInitializerError`
+
+多见于 **IntelliJ 使用 JDK 17+ 内置编译** 且 **Lombok 插件或依赖偏旧**。可按顺序处理：
+
+1. **重新加载 Maven**：右键 `backend/pom.xml` → Maven → Reload Project。  
+2. **开启注解处理**：Settings → Build, Execution, Deployment → Compiler → Annotation Processors → 勾选 **Enable annotation processing**。  
+3. **更新 Lombok 插件**：Settings → Plugins → 搜索 Lombok → 更新到最新。  
+4. **统一 JDK**：Project Structure → Project SDK 选 **JDK 8** 或 **11**（与 `java.version` 1.8 一致最省事）；若必须用 JDK 21+ 编译，请保证 `pom.xml` 里 `lombok.version` 已较新（当前工程已显式指定并与 `maven-compiler-plugin` 的 `annotationProcessorPaths` 对齐）。
+
+命令行验证：`cd backend && mvn -q -DskipTests compile`。
+
 ---
 
 ## 后续落地建议

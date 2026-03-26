@@ -1,5 +1,6 @@
 package com.aiburst.dto;
 
+
 import lombok.Data;
 
 @Data
