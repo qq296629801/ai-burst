@@ -41,13 +41,13 @@ public class GlobalExceptionHandler {
         return ApiResult.fail(ResultCode.BAD_REQUEST.getCode(), e.getMessage());
     }
 
+    /**
+     * 大模型上游错误统一返回 502，避免与 Spring Security 的 403（无接口权限）混淆。
+     */
     @ExceptionHandler(LlmInvocationException.class)
     public ResponseEntity<ApiResult<Void>> llmInvoke(LlmInvocationException e) {
-        int sc = e.getHttpStatus();
-        if (sc < 400 || sc > 599) {
-            sc = HttpStatus.BAD_GATEWAY.value();
-        }
-        return ResponseEntity.status(sc).body(ApiResult.fail(sc, e.getMessage()));
+        int code = HttpStatus.BAD_GATEWAY.value();
+        return ResponseEntity.status(code).body(ApiResult.fail(code, e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

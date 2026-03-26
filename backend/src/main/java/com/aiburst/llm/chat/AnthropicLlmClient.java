@@ -5,12 +5,14 @@ import com.aiburst.llm.dto.LlmChatRequest;
 import com.aiburst.llm.dto.LlmChatResponse;
 import com.aiburst.llm.entity.LlmChannel;
 import com.aiburst.llm.exception.LlmInvocationException;
+import com.aiburst.llm.util.OpenAiStyleUpstreamErrorParser;
 import com.aiburst.llm.util.UrlJoinUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -87,7 +89,8 @@ public class AnthropicLlmClient {
             ResponseEntity<String> resp = llmRestTemplate.postForEntity(url, entity, String.class);
             return parseAnthropic(resp.getBody(), model, channel.getProviderCode());
         } catch (HttpStatusCodeException e) {
-            throw new LlmInvocationException(e.getRawStatusCode(), shorten(e.getResponseBodyAsString()));
+            String human = OpenAiStyleUpstreamErrorParser.toHumanMessage(e.getResponseBodyAsString(), objectMapper);
+            throw new LlmInvocationException(HttpStatus.BAD_GATEWAY.value(), human);
         } catch (Exception e) {
             throw new LlmInvocationException("anthropic request failed: " + e.getMessage(), e);
         }
@@ -125,12 +128,5 @@ public class AnthropicLlmClient {
             return b.trim();
         }
         return null;
-    }
-
-    private static String shorten(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.length() > 2000 ? s.substring(0, 2000) + "..." : s;
     }
 }
