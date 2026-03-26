@@ -1,0 +1,27 @@
+# AI Burst — 与《技术方案/开发规范.md》对齐
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.java]
+indent_style = space
+indent_size = 4
+
+[*.{vue,js,cjs,mjs,ts,tsx,json,css,scss,html}]
+indent_style = space
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.sql]
+indent_style = space
+indent_size = 4

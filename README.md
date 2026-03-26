@@ -56,10 +56,20 @@ AI Burst 是一套前后端分离的业务系统：后端基于 **Java 8** 与 *
 | `产品/` | 产品需求、原型说明、用户故事等 |
 | `技术方案/` | 详细设计、库表设计、接口约定、部署与运维说明等 |
 
+**工程与协作**
+
+- 开发规范（对齐《阿里巴巴 Java 开发手册》体系）：[技术方案/开发规范.md](技术方案/开发规范.md)
+- 编辑器缩进与换行：仓库根目录 [.editorconfig](.editorconfig)
+
 **权限专题**
 
 - 产品线需求：[产品/权限产品线需求.md](产品/权限产品线需求.md)
 - 技术方案：[技术方案/权限系统技术方案.md](技术方案/权限系统技术方案.md)
+
+**大模型与 API 对接**
+
+- 产品线需求：[产品/大模型与API对接产品线需求.md](产品/大模型与API对接产品线需求.md)
+- 技术方案：[技术方案/大模型接入技术方案.md](技术方案/大模型接入技术方案.md)
 
 ---
 
@@ -67,8 +77,8 @@ AI Burst 是一套前后端分离的业务系统：后端基于 **Java 8** 与 *
 
 | 目录 | 说明 |
 |------|------|
-| `backend/` | Spring Boot 2.7 + Java 8、MyBatis、Redis、JWT、Flyway |
-| `frontend/` | Vue 3 + Vite + Pinia + Element Plus |
+| `backend/` | Spring Boot 2.7 + Java 8、MyBatis、Redis、JWT、Flyway；含 **大模型通道** 与 **统一对话**（`V2__llm_module.sql`） |
+| `frontend/` | Vue 3 + Vite + Pinia + Element Plus；含 **通道配置**、**对话体验** 页面 |
 
 ### 环境要求
 
@@ -85,7 +95,9 @@ cd backend
 mvn spring-boot:run
 ```
 
-默认在应用首次启动且无 `admin` 用户时，会写入用户 **admin / admin123** 并绑定内置超级管理员角色（权限数据由 Flyway 迁移 `V1__init.sql` 初始化）。
+默认在应用首次启动且无 `admin` 用户时，会写入用户 **admin / admin123** 并绑定内置超级管理员角色（权限数据由 Flyway 迁移 `V1__init.sql` 初始化）。**大模型菜单与表结构**见 `V2__llm_module.sql`；升级后请 **重新登录** 或等待权限缓存过期以加载新菜单。
+
+大模型通道的 **API Key** 使用 `aiburst.llm.crypto.secret` 加密存储，生产环境务必修改。
 
 ### 启动前端
 
@@ -111,6 +123,12 @@ npm run dev
 4. **统一 JDK**：Project Structure → Project SDK 选 **JDK 8** 或 **11**（与 `java.version` 1.8 一致最省事）；若必须用 JDK 21+ 编译，请保证 `pom.xml` 里 `lombok.version` 已较新（当前工程已显式指定并与 `maven-compiler-plugin` 的 `annotationProcessorPaths` 对齐）。
 
 命令行验证：`cd backend && mvn -q -DskipTests compile`。
+
+### Flyway：`Validate failed` / V2（llm module）失败
+
+多为 **V2 执行中断** 或历史表中有 **失败记录**。请先 **停止应用**，按 [技术方案/Flyway故障恢复说明.md](技术方案/Flyway故障恢复说明.md) 清理半成品并执行 `mvn flyway:repair`（或手工修复 `flyway_schema_history`）后再启动。`backend/pom.xml` 已配置 `flyway-maven-plugin`，密码需与 `application.yml` 一致（可用 `-Dflyway.password=` 覆盖）。
+
+若日志里还有 **`permissionMapper` / `sqlSessionTemplate`** 报错，通常是 Flyway 先失败导致容器未初始化完成，**先修 Flyway** 即可。仅本地应急可照 `application-local.example.yml` 暂时关闭 Flyway。
 
 ---
 

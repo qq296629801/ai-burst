@@ -1,0 +1,11 @@
+# 本地应急：先能启动 Spring，再慢慢修 Flyway / 库数据。
+# 使用方式：
+#   1. 复制本文件为 application-local.yml（application-local.yml 已加入 .gitignore，勿提交密码）
+#   2. 按需填写 spring.datasource 等（或仅继承主配置只关 Flyway）
+#   3. 启动：mvn spring-boot:run -Dspring-boot.run.profiles=local
+#
+# 注意：关闭 Flyway 期间不会自动跑迁移，修库后请改回 enabled: true 或去掉 local  profile。
+
+spring:
+  flyway:
+    enabled: false

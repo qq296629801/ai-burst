@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { login as apiLogin, logout as apiLogout, fetchMe } from '@/api/auth'
+import { STORAGE_TOKEN_KEY } from '@/constants/storage'
 import router from '@/router'
-
-const TOKEN_KEY = 'aiburst_token'
 
 const viewModules = import.meta.glob('../views/**/*.vue')
 
@@ -45,7 +44,7 @@ function trimChildPath(fullPath) {
 
 export const useUserStore = defineStore('user', {
   state: () => ({
-    token: localStorage.getItem(TOKEN_KEY) || '',
+    token: localStorage.getItem(STORAGE_TOKEN_KEY) || '',
     user: null,
     permissions: [],
     menus: [],
@@ -65,7 +64,7 @@ export const useUserStore = defineStore('user', {
       this.permissions = payload.permissions || []
       this.menus = payload.menus || []
       if (this.token) {
-        localStorage.setItem(TOKEN_KEY, this.token)
+        localStorage.setItem(STORAGE_TOKEN_KEY, this.token)
       }
     },
     registerDynamicRoutes() {
@@ -117,7 +116,7 @@ export const useUserStore = defineStore('user', {
       this.user = null
       this.permissions = []
       this.menus = []
-      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(STORAGE_TOKEN_KEY)
       this.clearDynamicRoutes()
     },
     clear() {
@@ -125,7 +124,7 @@ export const useUserStore = defineStore('user', {
       this.user = null
       this.permissions = []
       this.menus = []
-      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(STORAGE_TOKEN_KEY)
       this.clearDynamicRoutes()
     },
     defaultHomePath() {

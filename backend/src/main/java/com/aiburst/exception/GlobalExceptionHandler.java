@@ -2,7 +2,9 @@ package com.aiburst.exception;
 
 import com.aiburst.common.ApiResult;
 import com.aiburst.common.ResultCode;
+import com.aiburst.llm.exception.LlmInvocationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
@@ -37,6 +39,15 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResult<Void> illegalArg(IllegalArgumentException e) {
         return ApiResult.fail(ResultCode.BAD_REQUEST.getCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(LlmInvocationException.class)
+    public ResponseEntity<ApiResult<Void>> llmInvoke(LlmInvocationException e) {
+        int sc = e.getHttpStatus();
+        if (sc < 400 || sc > 599) {
+            sc = HttpStatus.BAD_GATEWAY.value();
+        }
+        return ResponseEntity.status(sc).body(ApiResult.fail(sc, e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

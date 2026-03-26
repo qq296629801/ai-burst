@@ -17,6 +17,10 @@
         <result column="created_at" property="createdAt"/>
     </resultMap>
 
+    <sql id="Permission_Column_List">
+        id, parent_id, perm_code, perm_name, perm_type, path, component, icon, sort_order, status, created_at
+    </sql>
+
     <select id="selectPermCodesByUserId" resultType="string">
         SELECT DISTINCT p.perm_code
         FROM sys_permission p
@@ -30,8 +34,8 @@
     </select>
 
     <select id="selectMenuByUserId" resultMap="BaseMap">
-        SELECT DISTINCT p.id, p.parent_id, p.perm_code, p.perm_name, p.perm_type, p.path, p.component, p.icon,
-               p.sort_order, p.status, p.created_at
+        SELECT DISTINCT
+        <include refid="Permission_Column_List"/>
         FROM sys_permission p
         INNER JOIN sys_role_permission rp ON p.id = rp.perm_id
         INNER JOIN sys_user_role ur ON ur.role_id = rp.role_id
@@ -40,11 +44,17 @@
     </select>
 
     <select id="selectAllOrderBySort" resultMap="BaseMap">
-        SELECT * FROM sys_permission ORDER BY sort_order, id
+        SELECT
+        <include refid="Permission_Column_List"/>
+        FROM sys_permission
+        ORDER BY sort_order, id
     </select>
 
     <select id="selectById" resultMap="BaseMap">
-        SELECT * FROM sys_permission WHERE id = #{id}
+        SELECT
+        <include refid="Permission_Column_List"/>
+        FROM sys_permission
+        WHERE id = #{id}
     </select>
 
     <select id="countByCode" resultType="int">

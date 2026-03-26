@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@MapperScan("com.aiburst.mapper")
+@MapperScan({"com.aiburst.mapper", "com.aiburst.llm.mapper"})
 public class AiBurstApplication {
 
     public static void main(String[] args) {

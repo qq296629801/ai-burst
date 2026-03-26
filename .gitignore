@@ -1,4 +1,6 @@
 target/
+# 本地覆盖配置（常含密码或 flyway.enabled=false）
+backend/src/main/resources/application-local.yml
 .idea/
 *.iml
 .DS_Store

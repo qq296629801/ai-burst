@@ -21,6 +21,11 @@
         <java.version>1.8</java.version>
         <!-- 与当前 Lombok 一致；新版修复高版本 JDK 下 javac 与 Lombok 的 TypeTag :: UNKNOWN -->
         <lombok.version>1.18.44</lombok.version>
+        <!-- 供 flyway-maven-plugin 使用；与 application.yml 不一致时请用 -D 覆盖 -->
+        <flyway.url>jdbc:mysql://127.0.0.1:3306/ai_burst?useUnicode=true&amp;characterEncoding=utf8&amp;serverTimezone=Asia/Shanghai&amp;useSSL=false</flyway.url>
+        <flyway.user>root</flyway.user>
+        <!-- 与本地库密码一致；勿提交真实密码，可用 -Dflyway.password=xxx 覆盖 -->
+        <flyway.password></flyway.password>
     </properties>
 
     <dependencies>
@@ -112,6 +117,17 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-maven-plugin</artifactId>
+                <version>8.5.13</version>
+                <configuration>
+                    <url>${flyway.url}</url>
+                    <user>${flyway.user}</user>
+                    <password>${flyway.password}</password>
+                    <locations>classpath:db/migration</locations>
+                </configuration>
             </plugin>
         </plugins>
     </build>

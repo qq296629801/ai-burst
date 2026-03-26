@@ -17,7 +17,7 @@ spring:
 
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
-  type-aliases-package: com.aiburst.entity
+  type-aliases-package: com.aiburst.entity,com.aiburst.llm.entity
   configuration:
     map-underscore-to-camel-case: true
     default-enum-type-handler: org.apache.ibatis.type.EnumOrdinalTypeHandler
@@ -37,6 +37,10 @@ aiburst:
     expire-minutes: 120
   cors:
     allowed-origins: "http://localhost:5173,http://127.0.0.1:5173"
+  llm:
+    crypto:
+      # 用于加密存储通道 API Key；生产请改为环境变量或 KMS
+      secret: "ai-burst-llm-crypto-change-me-in-prod-32b!!"
 
 logging:
   level:

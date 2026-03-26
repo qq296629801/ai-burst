@@ -11,12 +11,22 @@
         <result column="created_at" property="createdAt"/>
     </resultMap>
 
+    <sql id="Role_Column_List">
+        id, role_code, role_name, remark, created_at
+    </sql>
+
     <select id="selectAll" resultMap="BaseMap">
-        SELECT * FROM sys_role ORDER BY id
+        SELECT
+        <include refid="Role_Column_List"/>
+        FROM sys_role
+        ORDER BY id
     </select>
 
     <select id="selectById" resultMap="BaseMap">
-        SELECT * FROM sys_role WHERE id = #{id}
+        SELECT
+        <include refid="Role_Column_List"/>
+        FROM sys_role
+        WHERE id = #{id}
     </select>
 
     <select id="countByCode" resultType="int">
