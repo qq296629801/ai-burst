@@ -45,7 +45,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String path = request.getRequestURI();
-        if (path.startsWith(request.getContextPath() + "/api/auth/login")) {
+        String cp = request.getContextPath() == null ? "" : request.getContextPath();
+        // 与 Security 中 permitAll 的登录路径一致，避免带尾斜杠或重复 context 时误解析 JWT
+        if (path.startsWith(cp + "/api/auth/login")) {
             filterChain.doFilter(request, response);
             return;
         }

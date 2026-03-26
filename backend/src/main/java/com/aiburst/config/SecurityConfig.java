@@ -47,15 +47,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf().disable()
-                .anonymous().disable()
                 .cors().configurationSource(corsConfigurationSource())
                 .and()
                 .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 .and()
                 .authorizeRequests()
                 .antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .antMatchers("/api/auth/login").permitAll()
-                .anyRequest().authenticated()
+                // 仅允许匿名访问登录；不要用 anonymous().disable()，否则部分环境下 permitAll 仍走 401
+                .antMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .anyRequest().fullyAuthenticated()
                 .and()
                 .exceptionHandling()
                 .authenticationEntryPoint(authenticationEntryPoint())
