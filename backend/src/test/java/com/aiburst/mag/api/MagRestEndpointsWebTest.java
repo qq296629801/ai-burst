@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -48,6 +49,17 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"agentId\":3}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockMagUser(authorities = {"mag:project:list"})
+    void orchestration_runs_list() throws Exception {
+        when(orchestrationRunService.listByProject(eq(1L), anyLong(), anyInt()))
+                .thenReturn(List.of(Map.of("id", 1L, "status", "SUCCEEDED")));
+        mockMvc.perform(get("/api/mag/projects/1/orchestration-runs").param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"));
     }
 
     @Test

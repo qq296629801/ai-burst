@@ -13,7 +13,7 @@
 |------|------|
 | API | 可通过 REST `/api/mag/**` 或平台接口验证 |
 | UI | 前端页面或工作台操作验证 |
-| E2E | 依赖 Temporal / LangChain4j / 真实 Agent 编排 |
+| E2E | 依赖 Temporal / AgentScope Java / 真实 Agent 编排 |
 | CFG | 依赖配置项（如 `quality_flag`、阈值、`config_json`） |
 | GAP | 当前实现未覆盖或仅部分覆盖，用例用于**缺口登记**，通过标准为「文档记录+后续迭代」 |
 | OUT | 产品 §2.2 **明确不在本期范围**，用例为**反向确认不验收该项** |

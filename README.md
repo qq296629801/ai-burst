@@ -125,7 +125,7 @@ npm run dev
 docker compose -f docker-compose.temporal.yml up -d
 ```
 
-应用侧在 `application.yml` 中配置 **`aiburst.mag.temporal`**：`enabled`、`target`（如 `127.0.0.1:7233`）、`namespace`（默认 `default`）、**`task-queue`**（默认 `mag-orchestration`，须与 Worker 一致）。当 **`enabled=true`** 且能连上 Temporal 时，Spring Boot 进程内会启动 **Temporal Worker**，并在「触发 Agent run / 触发线程编排」时 **`start` 对应 Workflow**，由 **Activity**（`MagOrchestrationActivitiesImpl`）执行（当前为日志占位，可在此接入 LangChain4j 等）。`enabled=false` 时接口返回明确提示，不启动 Worker。单测 profile `test` 中默认 **`enabled=false`** 以免依赖 Docker。业务库仍为 **MySQL**；Temporal 自带 PostgreSQL 仅服务 Temporal Server。
+应用侧在 `application.yml` 中配置 **`aiburst.mag.temporal`**：`enabled`、`target`（如 `127.0.0.1:7233`）、`namespace`（默认 `default`）、**`task-queue`**（默认 `mag-orchestration`，须与 Worker 一致）。当 **`enabled=true`** 且能连上 Temporal 时，Spring Boot 进程内会启动 **Temporal Worker**，并在「触发 Agent run / 触发线程编排」时 **`start` 对应 Workflow**，由 **Activity**（`MagOrchestrationActivitiesImpl`）执行，Agent run 路径已通过 **AgentScope Java**（`ReActAgent` + 通道对应的 `OpenAIChatModel` / `AnthropicChatModel`）调用绑定的大模型通道；线程编排仍为占位。`enabled=false` 时接口返回明确提示，不启动 Worker。单测 profile `test` 中默认 **`enabled=false`** 以免依赖 Docker。业务库仍为 **MySQL**；Temporal 自带 PostgreSQL 仅服务 Temporal Server。
 
 ### MinIO
 

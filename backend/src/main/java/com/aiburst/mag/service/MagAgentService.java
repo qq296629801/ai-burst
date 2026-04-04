@@ -23,6 +23,7 @@ public class MagAgentService {
     private final MagAgentMapper agentMapper;
     private final MagAccessHelper accessHelper;
     private final MagTemporalTriggerService temporalTriggerService;
+    private final MagOrchestrationRunService orchestrationRunService;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -64,7 +65,9 @@ public class MagAgentService {
         if (StringUtils.hasText(req.getName())) {
             existing.setName(req.getName().trim());
         }
-        if (req.getLlmChannelId() != null) {
+        if (Boolean.TRUE.equals(req.getApplyLlmChannelId())) {
+            existing.setLlmChannelId(req.getLlmChannelId());
+        } else if (req.getLlmChannelId() != null) {
             existing.setLlmChannelId(req.getLlmChannelId());
         }
         if (req.getSystemPromptProfile() != null) {
@@ -80,13 +83,21 @@ public class MagAgentService {
         return toRow(agentMapper.selectById(agentId));
     }
 
+    @Transactional
     public Map<String, Object> requestAgentRun(Long agentId, Long userId) {
         MagAgent a = agentMapper.selectById(agentId);
         if (a == null) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
         }
         accessHelper.requireMember(a.getProjectId(), userId);
-        return temporalTriggerService.triggerAgentRun(agentId, userId, "agentId=" + agentId);
+        if (a.getLlmChannelId() == null) {
+            throw new MagBusinessException(
+                    MagResultCode.MAG_AGENT_LLM_CHANNEL_REQUIRED,
+                    "Agent 未绑定大模型通道（llmChannelId），无法执行编排");
+        }
+        Map<String, Object> res = temporalTriggerService.triggerAgentRun(agentId, userId, "agentId=" + agentId);
+        orchestrationRunService.recordAgentTrigger(a.getProjectId(), agentId, userId, res);
+        return res;
     }
 
     private Map<String, Object> toRow(MagAgent a) {

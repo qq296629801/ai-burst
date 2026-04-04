@@ -26,6 +26,7 @@ public class MagCollaborationService {
     private final MagMessageMapper messageMapper;
     private final MagAccessHelper accessHelper;
     private final MagTemporalTriggerService temporalTriggerService;
+    private final MagOrchestrationRunService orchestrationRunService;
 
     public List<Map<String, Object>> listThreads(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -71,13 +72,16 @@ public class MagCollaborationService {
     /**
      * 触发线程编排：先做 Temporal 启用与连通性说明；Workflow/Worker 接入前不会真正启动编排。
      */
+    @Transactional
     public Map<String, Object> requestThreadRun(Long threadId, Long userId) {
         MagThread th = threadMapper.selectById(threadId);
         if (th == null) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
         }
         accessHelper.requireMember(th.getProjectId(), userId);
-        return temporalTriggerService.triggerThreadRun(threadId, userId, "threadId=" + threadId);
+        Map<String, Object> res = temporalTriggerService.triggerThreadRun(threadId, userId, "threadId=" + threadId);
+        orchestrationRunService.recordThreadTrigger(th.getProjectId(), threadId, userId, res);
+        return res;
     }
 
     private Map<String, Object> threadRow(MagThread t) {

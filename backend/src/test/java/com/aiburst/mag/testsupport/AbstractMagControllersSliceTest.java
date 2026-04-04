@@ -10,6 +10,7 @@ import com.aiburst.mag.service.MagImprovementLogService;
 import com.aiburst.mag.service.MagKbService;
 import com.aiburst.mag.service.MagMemberService;
 import com.aiburst.mag.service.MagModuleService;
+import com.aiburst.mag.service.MagOrchestrationRunService;
 import com.aiburst.mag.service.MagPmAssistService;
 import com.aiburst.mag.service.MagProjectService;
 import com.aiburst.mag.service.MagReleaseService;
@@ -50,6 +51,9 @@ public abstract class AbstractMagControllersSliceTest {
 
     @MockBean
     protected MagModuleService moduleService;
+
+    @MockBean
+    protected MagOrchestrationRunService orchestrationRunService;
 
     @MockBean
     protected MagCollaborationService collaborationService;

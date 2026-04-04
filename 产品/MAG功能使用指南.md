@@ -78,8 +78,9 @@
 ### 4.2 Agent
 
 - 查看本项目下的 **Agent 列表**（名称、类型、状态等）。
-- **新建 Agent**（有 `mag:agent:manage` 等权限时）：选择类型、填写名称后保存。
-- **触发 run**（有任务操作类权限时）：若 `aiburst.mag.temporal.enabled=true` 且能连上 Temporal，后端会 **启动 Workflow**（同进程 Worker 执行 Activity，返回体含 `workflowId`）；未启用或连不上则 **警告** 且 `accepted=false`。Activity 内可扩展真实 LangChain4j 编排逻辑。
+- **新建 Agent / 编辑**（有 `mag:agent:manage` 等权限时）：选择类型、填写名称；**大模型通道** 下拉框绑定本人「通道配置」里的通道（`llmChannelId`）。**触发 run** 前须绑定，否则接口报错。
+- **触发 run**（有任务操作类权限时）：**须先在 Agent 上绑定大模型通道**（`llmChannelId`，可通过更新 Agent 接口配置）；未绑定会直接 **接口报错**（业务码 `MAG_AGENT_LLM_CHANNEL_REQUIRED`），不会启动 Workflow。绑定后：若 `aiburst.mag.temporal.enabled=true` 且能连上 Temporal，会启动 Workflow（返回体可含 `workflowId`）；未启用或连不上则 **警告** 且 `accepted=false`。
+- **编排执行**（项目页签）：展示每次 **Agent / 沟通线程** 触发 run 后的记录（状态：已提交 → 执行中 → 成功/失败，或未接受）；支持刷新，并可通过 **WebSocket**（订阅本项目）在 Worker 更新状态时自动刷新列表。
 
 **小白提示**：Agent 可以理解成「不同角色的智能助手实例」，类型里常见后端、前端、测试、产品、项目经理、核查等（与产品文档一致）。
 

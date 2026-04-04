@@ -16,6 +16,11 @@ public class MagAgentUpsertRequest {
 
     private Long llmChannelId;
 
+    /**
+     * 为 true 时按 {@link #llmChannelId} 更新绑定（含 null 表示解绑）；未传或 false 则本次不改通道。
+     */
+    private Boolean applyLlmChannelId;
+
     @Size(max = 64)
     private String systemPromptProfile;
 

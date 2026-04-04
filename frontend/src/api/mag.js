@@ -120,6 +120,10 @@ export function magDashboardSnapshot(projectId) {
   return http.get('/mag/dashboard/snapshot', { params: { projectId } })
 }
 
+export function magListOrchestrationRuns(projectId, params) {
+  return http.get(`/mag/projects/${projectId}/orchestration-runs`, { params })
+}
+
 export function magTodosPage(params) {
   return http.get('/mag/todos', { params })
 }

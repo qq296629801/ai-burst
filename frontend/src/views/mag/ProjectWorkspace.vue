@@ -33,6 +33,22 @@
             <template #default="{ row }">{{ agentRoleLabel(row.roleType) }}</template>
           </el-table-column>
           <el-table-column prop="status" label="状态" width="80" />
+          <el-table-column label="大模型通道" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ agentChannelLabel(row.llmChannelId) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <el-button
+                v-permission="'mag:agent:manage'"
+                link
+                type="primary"
+                size="small"
+                @click="openEditAgent(row)"
+              >
+                编辑
+              </el-button>
+            </template>
+          </el-table-column>
           <el-table-column label="编排" width="120">
             <template #default="{ row }">
               <el-button
@@ -243,6 +259,37 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
+      <el-tab-pane label="编排执行" name="orchRuns">
+        <div class="toolbar">
+          <el-button size="small" @click="loadOrchestrationRuns">刷新</el-button>
+          <el-tag :type="magWs.connected ? 'success' : 'info'" size="small" style="margin-left: 8px">
+            WS {{ magWs.connected ? '已连接' : '未连接' }}
+          </el-tag>
+        </div>
+        <el-table :data="orchestrationRuns" border stripe size="small" style="margin-top: 8px">
+          <el-table-column prop="id" label="ID" width="72" />
+          <el-table-column prop="startedAt" label="开始时间" width="170" />
+          <el-table-column label="类型" width="96">
+            <template #default="{ row }">{{ orchRunKindLabel(row.runKind) }}</template>
+          </el-table-column>
+          <el-table-column label="目标" width="112">
+            <template #default="{ row }">
+              <span v-if="row.runKind === 'AGENT'">Agent #{{ row.agentId }}</span>
+              <span v-else-if="row.runKind === 'THREAD'">线程 #{{ row.threadId }}</span>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="workflowId" label="workflowId" min-width="200" show-overflow-tooltip />
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="orchStatusTagType(row.status)" size="small">{{ orchStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="message" label="说明" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="resultSummary" label="结果/错误" min-width="120" show-overflow-tooltip />
+          <el-table-column prop="finishedAt" label="结束时间" width="170" />
+        </el-table>
+      </el-tab-pane>
       <el-tab-pane label="告警" name="alerts">
         <el-button size="small" @click="loadAlerts">刷新</el-button>
         <el-table :data="alerts" border stripe size="small" style="margin-top: 8px">
@@ -328,8 +375,8 @@
     </el-tabs>
   </el-card>
 
-  <el-dialog v-model="agentDlg" title="Agent" width="480px">
-    <el-form label-width="100px">
+  <el-dialog v-model="agentDlg" :title="agentEditingId ? '编辑 Agent' : '新建 Agent'" width="520px" destroy-on-close>
+    <el-form label-width="108px">
       <el-form-item label="类型" required>
         <el-select v-model="agentForm.roleType" placeholder="选择类型" style="width: 100%">
           <el-option
@@ -341,6 +388,23 @@
         </el-select>
       </el-form-item>
       <el-form-item label="名称" required><el-input v-model="agentForm.name" /></el-form-item>
+      <el-form-item label="大模型通道">
+        <el-select
+          v-model="agentForm.llmChannelId"
+          placeholder="选择本人名下的通道（触发编排必填）"
+          filterable
+          clearable
+          style="width: 100%"
+        >
+          <el-option
+            v-for="c in llmChannels"
+            :key="c.id"
+            :label="`${c.channelName}（${c.providerName}）`"
+            :value="c.id"
+          />
+        </el-select>
+        <div class="form-hint">须与「大模型 → 通道配置」中当前账号创建的通道一致，否则触发 run 会报未绑定/无权限。</div>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="agentDlg = false">取消</el-button>
@@ -531,6 +595,7 @@ import {
   magListMembers,
   magListAgents,
   magCreateAgent,
+  magUpdateAgent,
   magListTasks,
   magCreateTask,
   magStartTask,
@@ -567,10 +632,14 @@ import {
   magPostMessage,
   magRunThread,
   magRunAgent,
+  magListOrchestrationRuns,
 } from '@/api/mag'
+import { fetchLlmChannels } from '@/api/llm'
+import { useMagWebSocket } from '@/composables/useMagWebSocket'
 
 const route = useRoute()
 const user = useUserStore()
+const magWs = useMagWebSocket()
 const projectId = computed(() => route.params.projectId)
 const tab = ref('members')
 const project = ref(null)
@@ -592,6 +661,7 @@ const revisions = ref([])
 const diffV1 = ref(1)
 const diffV2 = ref(2)
 const diffText = ref('')
+const orchestrationRuns = ref([])
 
 const agentRoleOptions = [
   { value: 'PM', label: 'PM' },
@@ -616,7 +686,9 @@ function poolStateLabel(s) {
 }
 
 const agentDlg = ref(false)
-const agentForm = ref({ roleType: 'BACKEND', name: '' })
+const agentEditingId = ref(null)
+const llmChannels = ref([])
+const agentForm = ref({ roleType: 'BACKEND', name: '', llmChannelId: null })
 const taskDlg = ref(false)
 const taskForm = ref({ title: '', description: '' })
 const relDlg = ref(false)
@@ -690,6 +762,60 @@ async function loadThreads() {
   threads.value = res.data
 }
 
+async function loadOrchestrationRuns() {
+  const pid = projectId.value
+  if (!pid) return
+  const res = await magListOrchestrationRuns(pid, { limit: 50 })
+  orchestrationRuns.value = res.data || []
+}
+
+function setupMagWs() {
+  magWs.disconnect()
+  const pid = projectId.value
+  if (!pid || !user.token) return
+  magWs.connect({
+    onOpen: () => {
+      if (projectId.value) {
+        magWs.subscribeProject(projectId.value)
+      }
+    },
+    onMessage: (data) => {
+      if (
+        data?.event === 'mag.orchestration.run.updated' &&
+        Number(data?.projectId) === Number(projectId.value)
+      ) {
+        loadOrchestrationRuns()
+      }
+    },
+  })
+}
+
+const ORCH_STATUS_LABELS = {
+  SUBMITTED: '已提交',
+  RUNNING: '执行中',
+  SUCCEEDED: '成功',
+  FAILED: '失败',
+  REJECTED: '未接受',
+}
+
+function orchStatusLabel(s) {
+  return ORCH_STATUS_LABELS[s] || s || '—'
+}
+
+function orchStatusTagType(s) {
+  if (s === 'SUCCEEDED') return 'success'
+  if (s === 'FAILED') return 'danger'
+  if (s === 'REJECTED') return 'warning'
+  if (s === 'RUNNING') return 'warning'
+  return 'info'
+}
+
+function orchRunKindLabel(k) {
+  if (k === 'AGENT') return 'Agent'
+  if (k === 'THREAD') return '线程'
+  return k || '—'
+}
+
 async function loadReq() {
   const res = await magGetRequirementDoc(projectId.value)
   reqContent.value = res.data.content || ''
@@ -727,11 +853,15 @@ async function loadSched() {
 }
 
 watch(tab, (t) => {
-  if (t === 'agents') loadAgents()
+  if (t === 'agents') {
+    loadLlmChannelsForAgent()
+    loadAgents()
+  }
   if (t === 'tasks') loadTasks()
   if (t === 'pool') loadPool()
   if (t === 'releases') loadReleases()
   if (t === 'threads') loadThreads()
+  if (t === 'orchRuns') loadOrchestrationRuns()
   if (t === 'req') loadReq()
   if (t === 'modules') loadModules()
   if (t === 'alerts') loadAlerts()
@@ -740,7 +870,10 @@ watch(tab, (t) => {
   if (t === 'sched') loadSched()
 })
 
-watch(projectId, () => refreshAll(), { immediate: true })
+watch(projectId, () => {
+  refreshAll()
+  setupMagWs()
+}, { immediate: true })
 
 onMounted(refreshAll)
 
@@ -749,14 +882,56 @@ function agentRoleLabel(value) {
   return o ? o.label : value || '—'
 }
 
+async function loadLlmChannelsForAgent() {
+  try {
+    const res = await fetchLlmChannels()
+    llmChannels.value = res.data || []
+  } catch {
+    llmChannels.value = []
+  }
+}
+
+function agentChannelLabel(channelId) {
+  if (channelId == null) return '—'
+  const c = llmChannels.value.find((x) => x.id === channelId)
+  return c ? `${c.channelName}（${c.providerName}）` : `#${channelId}`
+}
+
 function openAgent() {
-  agentForm.value = { roleType: 'BACKEND', name: '' }
+  agentEditingId.value = null
+  agentForm.value = { roleType: 'BACKEND', name: '', llmChannelId: null }
+  loadLlmChannelsForAgent()
+  agentDlg.value = true
+}
+
+function openEditAgent(row) {
+  agentEditingId.value = row.id
+  agentForm.value = {
+    roleType: row.roleType || 'BACKEND',
+    name: row.name || '',
+    llmChannelId: row.llmChannelId ?? null,
+  }
+  loadLlmChannelsForAgent()
   agentDlg.value = true
 }
 
 async function saveAgent() {
-  await magCreateAgent(projectId.value, agentForm.value)
-  ElMessage.success('已创建')
+  if (!agentForm.value.name?.trim()) {
+    ElMessage.warning('请输入名称')
+    return
+  }
+  const body = {
+    roleType: agentForm.value.roleType,
+    name: agentForm.value.name.trim(),
+    llmChannelId: agentForm.value.llmChannelId ?? null,
+  }
+  if (agentEditingId.value) {
+    await magUpdateAgent(agentEditingId.value, { ...body, applyLlmChannelId: true })
+    ElMessage.success('已保存')
+  } else {
+    await magCreateAgent(projectId.value, body)
+    ElMessage.success('已创建')
+  }
   agentDlg.value = false
   loadAgents()
 }
@@ -1059,6 +1234,7 @@ async function runThreadRow(row) {
   } else {
     ElMessage.success(msg)
   }
+  await loadOrchestrationRuns()
 }
 
 async function runAgentRow(row) {
@@ -1070,6 +1246,7 @@ async function runAgentRow(row) {
   } else {
     ElMessage.success(msg)
   }
+  await loadOrchestrationRuns()
 }
 </script>
 
@@ -1112,5 +1289,11 @@ async function runAgentRow(row) {
 .msg-line .body {
   white-space: pre-wrap;
   word-break: break-all;
+}
+.form-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
 }
 </style>

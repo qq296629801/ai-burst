@@ -34,4 +34,13 @@ public final class MagConstants {
     public static final String DECISION_APPROVE_WITH_CHANGE = "APPROVE_WITH_CHANGE";
     public static final String DECISION_REJECT = "REJECT";
     public static final String DECISION_DEFER = "DEFER";
+
+    public static final String ORCH_RUN_KIND_AGENT = "AGENT";
+    public static final String ORCH_RUN_KIND_THREAD = "THREAD";
+
+    public static final String ORCH_STATUS_SUBMITTED = "SUBMITTED";
+    public static final String ORCH_STATUS_RUNNING = "RUNNING";
+    public static final String ORCH_STATUS_SUCCEEDED = "SUCCEEDED";
+    public static final String ORCH_STATUS_FAILED = "FAILED";
+    public static final String ORCH_STATUS_REJECTED = "REJECTED";
 }

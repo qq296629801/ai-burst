@@ -2,7 +2,7 @@
 
 > **编制关系**：本文以 [产品/多Agent协作与项目管理产品线需求.md](../产品/多Agent协作与项目管理产品线需求.md) 为**唯一能力来源**；产品 **§2.1 全量模块**与正文各节功能**不得在技术方案中默示删减**。实施排期可分期上线，但**设计覆盖范围**须与产品全文一致；**逐项对照与缺口清零**见 **§17**。  
 > 对应产品需求：[产品/多Agent协作与项目管理产品线需求.md](../产品/多Agent协作与项目管理产品线需求.md)  
-> 关联升级决策：JDK **24**、Spring Boot **3.5+**（须官方支持 JDK 24 的 BOM）；**LangChain4j**、**Temporal**（**Docker** 部署）、**WebSocket** 大屏、首期知识库**关键词/标签**、定时任务 **Redis 锁**、外网检索 **Agent 工具经服务端代理出站**（**不做 URL/域名白名单**；**能成功拉取且未命中 SSRF 黑名单即允许**）；项目成员**不设**「仅负责拍板」独立角色；需求正文 **MySQL MEDIUMTEXT 落库**（首期不拆 MinIO 大对象）。
+> 关联升级决策：JDK **24**、Spring Boot **3.5+**（须官方支持 JDK 24 的 BOM）；**AgentScope Java**、**Temporal**（**Docker** 部署）、**WebSocket** 大屏、首期知识库**关键词/标签**、定时任务 **Redis 锁**、外网检索 **Agent 工具经服务端代理出站**（**不做 URL/域名白名单**；**能成功拉取且未命中 SSRF 黑名单即允许**）；项目成员**不设**「仅负责拍板」独立角色；需求正文 **MySQL MEDIUMTEXT 落库**（首期不拆 MinIO 大对象）。
 
 ---
 
@@ -19,7 +19,7 @@
 | **知识库（首期）** | **MySQL 全文 / 标签 / 关键词**（二期向量库另案） |
 | **大屏** | **WebSocket** |
 | **外网检索** | **服务端代理**；**由大模型/Agent 决定 URL**，**拉取成功即可用**；**强制 SSRF 黑名单** + **全量 `mag_external_fetch_audit`**；**不做白名单**（无 URL/host 允许名单配置） |
-| **Agent 栈** | **LangChain4j** 为主 |
+| **Agent 栈** | **AgentScope Java**（`io.agentscope:agentscope-core`）为主 |
 | **数据保留** | `mag_message`、`mag_agent_improvement_log` 等 **永久保留**（不自动 TTL 删除），依赖平台备份与容量规划 |
 | **归档→知识库** | `quality_flag=1` **自动**写入 `mag_kb_entry`（`ARCHIVE_REFLOW`） |
 | **站外通知** | **WebSocket + `mag_alert_event`**；**可接 QQ 机器人**（Webhook/HTTP 回调，与具体 Bot 协议对齐） |
@@ -35,7 +35,7 @@
 | 3 | 知识库（首期） | **MySQL 全文 / 标签 / 关键词**（二期向量） |
 | 4 | 大屏 | **WebSocket** |
 | 5 | 外网检索 | **代理 + Agent 驱动 URL + SSRF 黑名单 + 全量审计**（**不做白名单**） |
-| 6 | Agent 栈 | **LangChain4j** 为主 |
+| 6 | Agent 栈 | **AgentScope Java** 为主 |
 | 7 | 运行环境 | 应用与 Temporal **Docker** 化交付（镜像 JDK 24） |
 
 ---
@@ -51,7 +51,7 @@
 ┌──────────┐   REST/WS    ┌───────────────▼──────────────┐    ┌──────────┐
 │ Vue 3    │◄────────────►│ Spring Boot 3.5  (ai-burst)   │◄──►│  MySQL   │
 │ 项目工作台 │  WebSocket   │  · mag-* 领域 API             │    │  业务表   │
-│ 大屏/待办 │              │  · LangChain4j Runtime         │    └──────────┘
+│ 大屏/待办 │              │  · AgentScope（Activity 内）    │    └──────────┘
 └──────────┘              │  · Temporal Worker             │    ┌──────────┘
                           │  · LLM 通道适配 (复用 llm_channel) │◄──►│  Redis   │
                           │  · 定时 + 分布式锁               │    │ 锁/缓存   │
@@ -76,7 +76,7 @@
 |----------|-----------|
 | §1 产品目标（各条） | §17.2；编排见 §5～§6 Temporal、§8 WS、§9 API |
 | §2.1 模块表（全行） | §17.3；库表 §4、API §9、前端 §11 |
-| §3 六类 Agent | §17.4；`mag_agent.role_type` + LangChain4j 工具集 §5.2 |
+| §3 六类 Agent | §17.4；`mag_agent.role_type` + AgentScope 工具集 §5.2 |
 | §4.1～§4.4 主/子、协调、阻塞、可观测 | §17.5；`parent_agent_id`、`mag_thread`/`mag_message`、阻塞字段、筛选查询 §9 |
 | §4.5 核查 | `mag_task_verification` + **`TaskVerificationWorkflow`**；状态 §4.3.1 |
 | §5.1～§5.8 项目管理 | §17.6；各子节见表内 |
@@ -179,28 +179,29 @@
 
 ---
 
-## 5. LangChain4j 集成要点
+## 5. AgentScope Java 集成要点
 
 ### 5.1 与 `llm_channel` 的桥接
 
-- 实现 **`ChatLanguageModel` 适配器**：入参为 `channelId` + `userId`（鉴权），内部调用现有 **`LlmChatRouter`**（或抽取的 `LlmInvocationService`），负责解密 Key、选协议、组装 messages。
+- **Temporal Activity**（`MagOrchestrationActivitiesImpl`）委托 **`MagAgentScopeRunService`**：按 `mag_agent.llm_channel_id` 与 **触发用户** 调用 `llm_channel`（`selectByIdAndOwner`），**解密 API Key**，按 `LlmProtocol` 构建 **`OpenAIChatModel`**（`baseUrl` + `endpointPath` 与 `LlmProviderCatalog` 一致，兼容各厂商 OpenAI 式网关）或 **`AnthropicChatModel`**，并组装 **`ReActAgent`**（`enableMetaTool(false)`，工具集在实现期按角色扩展）。
 - **每个 `mag_agent` 行**可绑定 `llm_channel_id`；核查 Agent 建议**独立通道**或独立模型配置以便计费隔离。
+- 对话体验接口仍走现有 **`LlmChatService` + RestTemplate**；与 AgentScope **并存**，边界为：编排侧用 AgentScope，Playground 侧可继续用直连客户端。
 
 ### 5.2 Agent 与工具（Tools）
 
-- **职能 Agent**：工具可包括 — `searchOrgKb`（SQL LIKE + FULLTEXT）、**`fetchUrl`（或同名）**：经 **服务端 HTTP 客户端**出站，**由模型给出 URL**；**不做白名单**，**响应成功即可进入后续推理**；须过 **SSRF 黑名单**（见 §12）；写 **`mag_external_fetch_audit`**；`appendThreadMessage`、`updateTaskState`（受策略约束）等；**具体清单**在实现期按 **角色** 注册工具集。
+- **职能 Agent**：工具可包括 — `searchOrgKb`（SQL LIKE + FULLTEXT）、**`fetchUrl`（或同名）**：经 **服务端 HTTP 客户端**出站，**由模型给出 URL**；**不做白名单**，**响应成功即可进入后续推理**；须过 **SSRF 黑名单**（见 §12）；写 **`mag_external_fetch_audit`**；`appendThreadMessage`、`updateTaskState`（受策略约束）等；**具体清单**在实现期按 **角色** 注册为 AgentScope **`Toolkit`**。
 - **核查 Agent**：强制注册 `searchOrgKb`、`fetchUrl`、`getTaskAcceptanceCriteria`（读需求锚点）等；**禁止**调用将任务标为 DONE 的工具 unless 走核查通过路径。
 - **禁止自审**：承担 **`role_type=VERIFY`** 的 Agent **不得**作为同一任务的 `assignee_agent_id`；写入 `mag_task_verification` 时 **`verifier_agent_id` ≠ `assignee_agent_id`**（应用与 SQL 约束或触发器二选一，建议应用强校验 + DB CHECK 若 MySQL 版本支持）。
-- **记忆**：短期用 **MessageWindowChatMemory** 绑定 `thread_id`；长期摘要可写入 `mag_message`（SYSTEM）。
+- **记忆**：短期可用 AgentScope **Memory** 绑定 `thread_id`；长期摘要可写入 `mag_message`（SYSTEM）。
 
 ### 5.3 编排与 Temporal 的分工
 
-- **单次多轮对话、工具循环**：LangChain4j 在 **Activity** 内执行（可设超时与 max steps）。
+- **单次多轮对话、工具循环**：AgentScope **`ReActAgent`** 在 **Activity** 内执行（`aiburst.mag.agentscope.max-iters` 与 `GenerateOptions.executionConfig.timeout` 约束）。
 - **跨小时/天的等待**（等人拍板、等用户补充材料）：**Workflow 睡眠 + Signal**；不要在 LLM 层阻塞线程。
 
 ### 5.4 超时、重试与费用（首期默认，可配置）
 
-- **单次 Activity（含 LangChain4j 工具环）**： wall-clock 上限建议 **120s**（与当前 LLM `RestTemplate` 读超时对齐），硬超时由 Temporal Activity 选项覆盖；**max-llm-steps** 见 `aiburst.mag.verification.max-llm-steps`。
+- **单次 Activity（含 AgentScope ReAct 环）**： wall-clock 上限建议 **120s**（`aiburst.mag.agentscope.call-timeout-seconds`，与 LLM 调用对齐），硬超时由 Temporal Activity 选项覆盖；**max-iters** 见 `aiburst.mag.agentscope.max-iters`。
 - **重试**：Transient 网络/5xx **指数退避**；**429/配额** 记入 `mag_alert_event`，同一任务核查可 **有限次重试**（如 3 次）后 FAIL 或转人工排障（不修改核查记录，仅运维介入通道配置）。
 - **Token/费用预算**：项目级 `mag_project.config_json` 预留 `daily_token_budget` / `daily_cost_cap`（可选实现）；超出时 **拒绝新的 Agent 调用** 并写告警，**首期可仅记录用量不硬拦**。
 - **死循环 / 互等**：同线程内工具步数上限 + Temporal Workflow 历史长度监控；超过阈值 **终止 Activity** 并记 FAIL + `mag_alert_event`；**不提供**「人工改核查结论」入口（§12）。
@@ -219,7 +220,7 @@
 
 ### 6.2 Activity 原则
 
-- **查库、调 HTTP、调 LangChain4j、发 WebSocket** 均在 Activity；**Workflow 代码无 IO**。
+- **查库、调 HTTP、调 AgentScope、发 WebSocket** 均在 Activity；**Workflow 代码无 IO**。
 - **重试策略**：网络/5xx 指数退避；LLM 429/配额可配置降级（记录 `mag_alert_event`）。
 
 ### 6.3 与任务状态
@@ -311,7 +312,7 @@
 | GET | `/projects/{id}/alerts` | 告警事件列表；`POST /alerts/{id}/ack` 确认已读；**产品 §5.5** |
 | GET/PUT/DELETE | `/kb/entries/{id}` | 知识库单条维护；**产品 §5.8** |
 | POST | `/projects/{id}/modules/import-blueprint` | 从归档快照或 KB 条目**受控复制**模块蓝图至本项目；**产品 §5.8** |
-| POST | `/threads/{id}/run` 或 `/agents/{id}/run` | 可选：用户发消息后触发 Agent 编排（与 §5.2 LangChain4j 对齐） |
+| POST | `/threads/{id}/run` 或 `/agents/{id}/run` | 可选：用户发消息后触发 Agent 编排（与 §5.2 AgentScope 对齐） |
 
 上表中含 **§17** 新增列出的接口为**全量能力清单**组成部分；当前代码若未实现，须按迭代补齐，**不得从产品范围删除**。
 
@@ -404,7 +405,7 @@
 
 1. **Boot 3.5 + JDK 24**（与当前仓库一致）+ LLM/权限冒烟。  
 2. **Flyway V3** 建表 + 项目/成员/Agent/Task **CRUD API**（含 §9 已列路径的增量实现）。  
-3. **LangChain4j** 桥接通道 + 单线程对话 MVP。  
+3. **AgentScope Java** 桥接通道 + 单线程对话 MVP。  
 4. **Temporal** 接入 + **TaskVerificationWorkflow** + 核查记录表。  
 5. **WebSocket** 大屏 + 告警事件。  
 6. 需求池、升级链、外网代理、定时 Redis 锁 job；**要活/阻塞/协助记录/改进日志/模块树**等 §9 增补接口。  
@@ -687,7 +688,7 @@ CREATE TABLE mag_scheduled_job_config (
 
 | # | 产品目标（摘要） | 技术设计与落点 |
 |---|------------------|----------------|
-| 1 | 录入/配置/启停各类 Agent，同项目协同 | `mag_agent` + `llm_channel_id`；`PUT /agents/{id}`；LangChain4j 运行时按实例加载；`status` 启停 |
+| 1 | 录入/配置/启停各类 Agent，同项目协同 | `mag_agent` + `llm_channel_id`；`PUT /agents/{id}`；AgentScope 运行时按实例加载；`status` 启停 |
 | 2 | 项目级工作台：Agent 列表、沟通、任务状态 | 前端 §11 路由；REST §9 `projects`、`agents`、`threads`、`messages`、`tasks` |
 | 3 | 主/子层级；子完成后申领；主向 PM 拉活；PM 按模块进度拆解下发 | `parent_agent_id`；**要活** `POST /tasks/{id}/request-next`（或等价的线程消息 + 调度消费，见 §9）；PM Agent 工具 `assignTask` / 任务表更新 |
 | 4 | 全量记录 Agent 行为与改进轨迹；定时任务触发 | `mag_agent_improvement_log`；`mag_scheduled_job_config` + §7 |
@@ -909,10 +910,11 @@ springdoc:
 
 **Payload**：Workflow 入参仅含 **id 与标量**（`taskId`、`poolItemId`、`projectId`）；**禁止**传入 apiKey、完整需求正文；大文本在 Activity 内按 id 查库。
 
-### 19.4 LangChain4j 依赖与边界
+### 19.4 AgentScope Java 依赖与边界
 
-- **BOM**：在 `backend/pom.xml` 的 `dependencyManagement` 中 **import** **`dev.langchain4j:langchain4j-bom:1.12.2`**（JDK 17+，与 **JDK 24 / Boot 3.5** 配套；小版本升级请以 [Maven Central — langchain4j-bom](https://central.sonatype.com/artifact/dev.langchain4j/langchain4j-bom) 最新 **稳定版** 为准，整 BOM 同升）。依赖侧再引 **`langchain4j`**、**`langchain4j-open-ai`**（OpenAI 兼容协议）等，**不写子模块版本号**。
-- **边界**：`com.aiburst.mag.llm`（建议包）内实现 **`ChatLanguageModel` 装饰器**，委托现有 **`LlmChatRouter`**；**禁止**在 `llm` 包内引用 `mag_task` 等域类型。
+- **依赖**：在 `backend/pom.xml` 中引入 **`io.agentscope:agentscope-core`**（当前 **`1.0.11`**，JDK 17+，与 **JDK 24 / Boot 3.5** 配套；升级请以 [Maven Central — agentscope-core](https://central.sonatype.com/artifact/io.agentscope/agentscope-core) 最新 **稳定版** 为准）。`agentscope-core` 已传递 **DashScope / Anthropic / Gemini** 等 SDK；OpenAI 兼容通道使用内置 **`OpenAIChatModel`**（OkHttp），与 `llm_channel.base_url` + 目录中的 completion 路径拼接一致。
+- **配置**：`aiburst.mag.agentscope.max-iters`、`aiburst.mag.agentscope.call-timeout-seconds`（见 `application.yml`）。
+- **边界**：编排入口在 **`com.aiburst.mag.agentscope`**（如 `MagAgentScopeRunService`），**禁止**在 `com.aiburst.llm` 包内引用 `mag_task` 等域类型；通道解密复用 **`LlmCryptoService`** 与 **`LlmChannelMapper`**。
 
 ### 19.5 QQ 机器人 Webhook（与 §13 配置对应）
 
@@ -955,4 +957,4 @@ QQ 侧将 `title` + `summary` + 链接（若配置 `aiburst.mag.notify.qq.detail
 
 ---
 
-*版本 v1.4 | **§17 产品线需求全量追溯**（与产品全文对照不省略）；§9 API 增补全量清单；§14 明确排期不缩减范围 | v1.2：§19.4 LangChain4j BOM **1.12.2**；v1.1：§19.7 错误码、§19.8 SpringDoc、[mag-openapi-stub.yaml](mag-openapi-stub.yaml) | 随评审迭代*
+*版本 v1.4 | **§17 产品线需求全量追溯**（与产品全文对照不省略）；§9 API 增补全量清单；§14 明确排期不缩减范围 | v1.2：§19.4 由 LangChain4j BOM 改为 **AgentScope Java agentscope-core**；v1.1：§19.7 错误码、§19.8 SpringDoc、[mag-openapi-stub.yaml](mag-openapi-stub.yaml) | 随评审迭代*

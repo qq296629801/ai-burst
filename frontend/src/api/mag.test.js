@@ -81,6 +81,9 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     await mag.magDashboardSnapshot(12)
     expect(http.get).toHaveBeenCalledWith('/mag/dashboard/snapshot', { params: { projectId: 12 } })
 
+    await mag.magListOrchestrationRuns(3, { limit: 30 })
+    expect(http.get).toHaveBeenCalledWith('/mag/projects/3/orchestration-runs', { params: { limit: 30 } })
+
     await mag.magTodosPage({ pageNum: 1, pageSize: 10 })
     expect(http.get).toHaveBeenCalledWith('/mag/todos', { params: { pageNum: 1, pageSize: 10 } })
 
