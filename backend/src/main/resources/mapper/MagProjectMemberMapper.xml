@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagProjectMemberMapper">
+
+    <resultMap id="MemberMap" type="com.aiburst.mag.entity.MagProjectMember">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="user_id" property="userId"/>
+        <result column="role_in_project" property="roleInProject"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="username" property="username"/>
+        <result column="nickname" property="nickname"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_project_member (project_id, user_id, role_in_project)
+        VALUES (#{projectId}, #{userId}, #{roleInProject})
+    </insert>
+
+    <delete id="deleteByProjectAndUser">
+        DELETE FROM mag_project_member WHERE project_id = #{projectId} AND user_id = #{userId}
+    </delete>
+
+    <select id="selectByProjectId" resultMap="MemberMap">
+        SELECT m.*, u.username, u.nickname
+        FROM mag_project_member m
+        LEFT JOIN sys_user u ON u.id = m.user_id
+        WHERE m.project_id = #{projectId}
+        ORDER BY m.id
+    </select>
+
+    <select id="selectRole" resultType="string">
+        SELECT role_in_project FROM mag_project_member
+        WHERE project_id = #{projectId} AND user_id = #{userId} LIMIT 1
+    </select>
+
+    <select id="countMember" resultType="int">
+        SELECT COUNT(*) FROM mag_project_member
+        WHERE project_id = #{projectId} AND user_id = #{userId}
+    </select>
+</mapper>

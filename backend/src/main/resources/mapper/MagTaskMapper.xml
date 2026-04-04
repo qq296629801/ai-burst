@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagTaskMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagTask">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="module_id" property="moduleId"/>
+        <result column="title" property="title"/>
+        <result column="description" property="description"/>
+        <result column="state" property="state"/>
+        <result column="assignee_agent_id" property="assigneeAgentId"/>
+        <result column="reporter_agent_id" property="reporterAgentId"/>
+        <result column="requirement_ref" property="requirementRef"/>
+        <result column="temporal_workflow_id" property="temporalWorkflowId"/>
+        <result column="block_reason" property="blockReason"/>
+        <result column="blocked_by_agent_id" property="blockedByAgentId"/>
+        <result column="row_version" property="rowVersion"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_task (project_id, module_id, title, description, state, assignee_agent_id, reporter_agent_id, requirement_ref, temporal_workflow_id, block_reason, blocked_by_agent_id, row_version)
+        VALUES (#{projectId}, #{moduleId}, #{title}, #{description}, #{state}, #{assigneeAgentId}, #{reporterAgentId}, #{requirementRef}, #{temporalWorkflowId}, #{blockReason}, #{blockedByAgentId}, #{rowVersion})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_task SET
+            module_id = #{moduleId},
+            title = #{title},
+            description = #{description},
+            state = #{state},
+            assignee_agent_id = #{assigneeAgentId},
+            reporter_agent_id = #{reporterAgentId},
+            requirement_ref = #{requirementRef},
+            temporal_workflow_id = #{temporalWorkflowId},
+            block_reason = #{blockReason},
+            blocked_by_agent_id = #{blockedByAgentId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStateWithVersion">
+        UPDATE mag_task SET
+            state = #{state},
+            row_version = row_version + 1,
+            temporal_workflow_id = #{temporalWorkflowId},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND row_version = #{expectedVersion}
+    </update>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_task WHERE id = #{id}</select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_task WHERE project_id = #{projectId} ORDER BY id DESC
+    </select>
+
+    <select id="countByState" resultType="map">
+        SELECT state AS state, COUNT(*) AS cnt FROM mag_task WHERE project_id = #{projectId} GROUP BY state
+    </select>
+</mapper>

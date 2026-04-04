@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagModuleMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagModule">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="parent_id" property="parentId"/>
+        <result column="name" property="name"/>
+        <result column="tag" property="tag"/>
+        <result column="sort_order" property="sortOrder"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_module (project_id, parent_id, name, tag, sort_order)
+        VALUES (#{projectId}, #{parentId}, #{name}, #{tag}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_module SET parent_id = #{parentId}, name = #{name}, tag = #{tag}, sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">DELETE FROM mag_module WHERE id = #{id}</delete>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_module WHERE id = #{id}</select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_module WHERE project_id = #{projectId} ORDER BY parent_id, sort_order, id
+    </select>
+</mapper>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagMessageMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagMessage">
+        <id column="id" property="id"/>
+        <result column="thread_id" property="threadId"/>
+        <result column="sender_type" property="senderType"/>
+        <result column="sender_agent_id" property="senderAgentId"/>
+        <result column="content" property="content"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_message (thread_id, sender_type, sender_agent_id, content)
+        VALUES (#{threadId}, #{senderType}, #{senderAgentId}, #{content})
+    </insert>
+
+    <select id="selectByThreadId" resultMap="BaseMap">
+        SELECT * FROM mag_message WHERE thread_id = #{threadId} ORDER BY id ASC
+    </select>
+</mapper>

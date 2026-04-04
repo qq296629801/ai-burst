@@ -4,6 +4,9 @@ import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
   plugins: [vue()],
+  test: {
+    environment: 'jsdom',
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -14,6 +17,11 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'http://127.0.0.1:8080',
+        ws: true,
         changeOrigin: true,
       },
     },

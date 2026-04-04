@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagProjectMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagProject">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="status" property="status"/>
+        <result column="config_json" property="configJson"/>
+        <result column="current_req_doc_id" property="currentReqDocId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_project (name, status, config_json, current_req_doc_id)
+        VALUES (#{name}, #{status}, #{configJson}, #{currentReqDocId})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_project
+        SET name = #{name}, status = #{status}, config_json = #{configJson}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateCurrentReqDocId">
+        UPDATE mag_project SET current_req_doc_id = #{docId} WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="BaseMap">
+        SELECT * FROM mag_project WHERE id = #{id}
+    </select>
+
+    <select id="selectByUserId" resultMap="BaseMap">
+        SELECT DISTINCT p.*
+        FROM mag_project p
+        INNER JOIN mag_project_member m ON m.project_id = p.id AND m.user_id = #{userId}
+        ORDER BY p.id DESC
+    </select>
+</mapper>

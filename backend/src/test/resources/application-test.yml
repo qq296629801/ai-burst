@@ -1,0 +1,9 @@
+spring:
+  main:
+    banner-mode: "off"
+
+# 单测不连 Temporal、不启 Worker
+aiburst:
+  mag:
+    temporal:
+      enabled: false

@@ -3,6 +3,8 @@ package com.aiburst.exception;
 import com.aiburst.common.ApiResult;
 import com.aiburst.common.ResultCode;
 import com.aiburst.llm.exception.LlmInvocationException;
+import com.aiburst.mag.MagBusinessException;
+import com.aiburst.mag.MagResultCode;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -48,6 +50,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResult<Void>> llmInvoke(LlmInvocationException e) {
         int code = HttpStatus.BAD_GATEWAY.value();
         return ResponseEntity.status(code).body(ApiResult.fail(code, e.getMessage()));
+    }
+
+    @ExceptionHandler(MagBusinessException.class)
+    public ResponseEntity<ApiResult<Void>> magBusiness(MagBusinessException e) {
+        MagResultCode rc = e.getResultCode();
+        return ResponseEntity.status(rc.getHttpStatus())
+                .body(ApiResult.fail(rc.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

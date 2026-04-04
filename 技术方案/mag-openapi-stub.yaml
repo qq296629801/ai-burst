@@ -1,0 +1,123 @@
+# 多 Agent REST 草案（与 多Agent协作技术方案.md §9 对齐）
+# 实现期：可合并进 springdoc 生成结果，或复制路径到正式 openapi
+openapi: 3.0.3
+info:
+  title: AI Burst — MAG API (stub)
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: mag-project
+  - name: mag-task
+  - name: mag-todo
+paths:
+  /api/mag/projects:
+    get:
+      tags: [mag-project]
+      summary: 项目列表
+      parameters:
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: ApiResult — data 含 list + total
+    post:
+      tags: [mag-project]
+      summary: 创建项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MagProjectCreate'
+      responses:
+        '200':
+          description: OK
+  /api/mag/projects/{id}:
+    get:
+      tags: [mag-project]
+      summary: 项目详情
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: OK
+        '404':
+          description: MAG_NOT_FOUND
+  /api/mag/tasks/{id}/submit-complete:
+    post:
+      tags: [mag-task]
+      summary: 申报完成 → PENDING_VERIFY + Workflow
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: 状态不允许 / 乐观锁冲突 — 见 §19.7
+  /api/mag/todos:
+    get:
+      tags: [mag-todo]
+      summary: 当前用户待拍板聚合
+      parameters:
+        - $ref: '#/components/parameters/PageNum'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+components:
+  parameters:
+    ProjectId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    PageNum:
+      name: pageNum
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        default: 10
+        minimum: 1
+        maximum: 100
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ApiResultVoid:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          nullable: true
+    MagProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 128

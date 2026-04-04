@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagKbEntryMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagKbEntry">
+        <id column="id" property="id"/>
+        <result column="source" property="source"/>
+        <result column="archive_id" property="archiveId"/>
+        <result column="title" property="title"/>
+        <result column="body" property="body"/>
+        <result column="tags_json" property="tagsJson"/>
+        <result column="keywords" property="keywords"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_kb_entry (source, archive_id, title, body, tags_json, keywords)
+        VALUES (#{source}, #{archiveId}, #{title}, #{body}, #{tagsJson}, #{keywords})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_kb_entry SET
+            title = #{title},
+            body = #{body},
+            tags_json = #{tagsJson},
+            keywords = #{keywords},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">DELETE FROM mag_kb_entry WHERE id = #{id}</delete>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_kb_entry WHERE id = #{id}</select>
+
+    <select id="selectAll" resultMap="BaseMap">
+        SELECT * FROM mag_kb_entry
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (title LIKE CONCAT('%', #{keyword}, '%') OR keywords LIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY id DESC
+    </select>
+</mapper>

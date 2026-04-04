@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagRequirementPoolItemMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagRequirementPoolItem">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="state" property="state"/>
+        <result column="revision_id" property="revisionId"/>
+        <result column="anchor_json" property="anchorJson"/>
+        <result column="payload_json" property="payloadJson"/>
+        <result column="assigned_decider_user_id" property="assignedDeciderUserId"/>
+        <result column="temporal_workflow_id" property="temporalWorkflowId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_requirement_pool_item (project_id, state, revision_id, anchor_json, payload_json, assigned_decider_user_id, temporal_workflow_id)
+        VALUES (#{projectId}, #{state}, #{revisionId}, #{anchorJson}, #{payloadJson}, #{assignedDeciderUserId}, #{temporalWorkflowId})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_requirement_pool_item SET
+            state = #{state},
+            revision_id = #{revisionId},
+            anchor_json = #{anchorJson},
+            payload_json = #{payloadJson},
+            assigned_decider_user_id = #{assignedDeciderUserId},
+            temporal_workflow_id = #{temporalWorkflowId},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_requirement_pool_item WHERE id = #{id}</select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_requirement_pool_item WHERE project_id = #{projectId} ORDER BY id DESC
+    </select>
+
+    <!-- §16.2：成员 + mag:pool:decide 在 Java 中过滤；此处拉取用户参与项目的待拍板项 -->
+    <select id="selectTodosForUser" resultMap="BaseMap">
+        SELECT p.*
+        FROM mag_requirement_pool_item p
+        INNER JOIN mag_project_member m ON m.project_id = p.project_id AND m.user_id = #{userId}
+        WHERE p.state = #{pendingState}
+        ORDER BY p.id DESC
+    </select>
+</mapper>

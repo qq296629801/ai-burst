@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagRequirementDocMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagRequirementDoc">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="current_version" property="currentVersion"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_requirement_doc (project_id, current_version) VALUES (#{projectId}, #{currentVersion})
+    </insert>
+
+    <update id="updateCurrentVersion">
+        UPDATE mag_requirement_doc SET current_version = #{version}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}
+    </update>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_requirement_doc WHERE project_id = #{projectId} LIMIT 1
+    </select>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_requirement_doc WHERE id = #{id}</select>
+</mapper>

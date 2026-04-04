@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagReleaseArchiveMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagReleaseArchive">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="version_label" property="versionLabel"/>
+        <result column="snapshot_json" property="snapshotJson"/>
+        <result column="minio_object_key" property="minioObjectKey"/>
+        <result column="quality_flag" property="qualityFlag"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_release_archive (project_id, version_label, snapshot_json, minio_object_key, quality_flag)
+        VALUES (#{projectId}, #{versionLabel}, #{snapshotJson}, #{minioObjectKey}, #{qualityFlag})
+    </insert>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_release_archive WHERE id = #{id}</select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_release_archive WHERE project_id = #{projectId} ORDER BY id DESC
+    </select>
+</mapper>

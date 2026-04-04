@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagPmAssistRecordMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagPmAssistRecord">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="problem_type" property="problemType"/>
+        <result column="root_cause_summary" property="rootCauseSummary"/>
+        <result column="action_taken" property="actionTaken"/>
+        <result column="assisted_agent_ids_json" property="assistedAgentIdsJson"/>
+        <result column="resolved" property="resolved"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_pm_assist_record (project_id, problem_type, root_cause_summary, action_taken, assisted_agent_ids_json, resolved)
+        VALUES (#{projectId}, #{problemType}, #{rootCauseSummary}, #{actionTaken}, #{assistedAgentIdsJson}, #{resolved})
+    </insert>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_pm_assist_record WHERE project_id = #{projectId} ORDER BY id DESC
+    </select>
+</mapper>

@@ -17,7 +17,7 @@ spring:
 
 mybatis:
   mapper-locations: classpath:mapper/**/*.xml
-  type-aliases-package: com.aiburst.entity,com.aiburst.llm.entity
+  type-aliases-package: com.aiburst.entity,com.aiburst.llm.entity,com.aiburst.mag.entity
   configuration:
     map-underscore-to-camel-case: true
     default-enum-type-handler: org.apache.ibatis.type.EnumOrdinalTypeHandler
@@ -32,6 +32,13 @@ server:
     context-path: /
 
 aiburst:
+  mag:
+    temporal:
+      # 已开启：触发「Agent/线程编排」会探测 127.0.0.1:7233；请先执行 docker compose -f docker-compose.temporal.yml up -d
+      enabled: true
+      target: "127.0.0.1:7233"
+      namespace: default
+      task-queue: mag-orchestration
   jwt:
     secret: "ai-burst-change-this-secret-key-at-least-32-chars!!"
     expire-minutes: 120
@@ -41,6 +48,12 @@ aiburst:
     crypto:
       # 用于加密存储通道 API Key；生产请改为环境变量或 KMS
       secret: "ai-burst-llm-crypto-change-me-in-prod-32b!!"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 logging:
   level:

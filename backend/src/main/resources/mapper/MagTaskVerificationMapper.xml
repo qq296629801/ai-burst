@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagTaskVerificationMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagTaskVerification">
+        <id column="id" property="id"/>
+        <result column="task_id" property="taskId"/>
+        <result column="result" property="result"/>
+        <result column="verifier_agent_id" property="verifierAgentId"/>
+        <result column="rationale" property="rationale"/>
+        <result column="evidence_summary" property="evidenceSummary"/>
+        <result column="search_trace_json" property="searchTraceJson"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_task_verification (task_id, result, verifier_agent_id, rationale, evidence_summary, search_trace_json)
+        VALUES (#{taskId}, #{result}, #{verifierAgentId}, #{rationale}, #{evidenceSummary}, #{searchTraceJson})
+    </insert>
+
+    <select id="selectByTaskId" resultMap="BaseMap">
+        SELECT * FROM mag_task_verification WHERE task_id = #{taskId} ORDER BY id ASC
+    </select>
+</mapper>

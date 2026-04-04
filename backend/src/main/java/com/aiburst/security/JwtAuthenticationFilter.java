@@ -5,6 +5,10 @@ import com.aiburst.common.ApiResult;
 import com.aiburst.common.ResultCode;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
@@ -15,10 +19,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -46,7 +46,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI();
         String cp = request.getContextPath() == null ? "" : request.getContextPath();
-        // 与 Security 中 permitAll 的登录路径一致，避免带尾斜杠或重复 context 时误解析 JWT
         if (path.startsWith(cp + "/api/auth/login")) {
             filterChain.doFilter(request, response);
             return;

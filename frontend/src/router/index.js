@@ -25,6 +25,12 @@ const router = createRouter({
             next(p || '/403')
           },
         },
+        {
+          path: 'mag/project/:projectId',
+          name: 'MagProjectWorkspace',
+          component: () => import('@/views/mag/ProjectWorkspace.vue'),
+          meta: { title: 'MAG 工作台', permission: 'mag:project:list' },
+        },
       ],
     },
   ],

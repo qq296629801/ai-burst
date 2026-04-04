@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagScheduledJobConfigMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagScheduledJobConfig">
+        <id column="id" property="id"/>
+        <result column="job_key" property="jobKey"/>
+        <result column="cron_expr" property="cronExpr"/>
+        <result column="enabled" property="enabled"/>
+        <result column="project_id" property="projectId"/>
+        <result column="last_run_at" property="lastRunAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_scheduled_job_config (job_key, cron_expr, enabled, project_id, last_run_at)
+        VALUES (#{jobKey}, #{cronExpr}, #{enabled}, #{projectId}, #{lastRunAt})
+    </insert>
+
+    <update id="update">
+        UPDATE mag_scheduled_job_config SET
+            job_key = #{jobKey},
+            cron_expr = #{cronExpr},
+            enabled = #{enabled},
+            project_id = #{projectId},
+            last_run_at = #{lastRunAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_scheduled_job_config WHERE id = #{id}</select>
+
+    <select id="selectAll" resultMap="BaseMap">SELECT * FROM mag_scheduled_job_config ORDER BY id</select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_scheduled_job_config WHERE project_id = #{projectId} OR project_id IS NULL ORDER BY id
+    </select>
+
+    <select id="selectByJobKey" resultMap="BaseMap">SELECT * FROM mag_scheduled_job_config WHERE job_key = #{jobKey} LIMIT 1</select>
+</mapper>
