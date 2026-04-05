@@ -129,7 +129,7 @@
 
 迁移规则（摘要）：`submit-complete` → `PENDING_VERIFY` 并启动/关联 Workflow；核查 **PASS** → `DONE`；**FAIL** → `IN_PROGRESS`；人工抽检若后续引入，不得跳过核查记录链。
 
-**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中至少一条，或编排结果摘要为**非占位**且达到实现侧最小长度阈值。**核查类**编排虽可带 `task_id`，但不满足执行方 assignee 条件，**不会**误触发自动申报。
+**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中**至少一条**（仅凭模型长回复不落库改进日志则**不**自动申报）。**核查类**编排虽可带 `task_id`，但不满足执行方 assignee 条件，**不会**误触发自动申报。
 
 ### 4.4 核查（§4.5）
 

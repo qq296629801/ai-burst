@@ -55,7 +55,7 @@ aiburst:
       auto-start-on-dispatch: true
       # 申报完成进入待核查后，自动进入核查中并触发 VERIFY Agent 编排（无 VERIFY Agent 时仅告警，可人工核查）
       auto-verify-on-submit-complete: true
-      # 关联任务的执行方 Agent 编排成功且存在产出物时，自动申报完成（进入待核查）；关闭后仅可手动申报
+      # 关联任务的执行方 Agent 编排成功且本次时间窗内已有 mag_agent_improvement_log 时，自动申报完成（进入待核查）；关闭后仅可手动申报
       auto-submit-complete-on-orchestration-success: true
       # 核查 PASS 结项后自动拉起项目经理 Agent 复盘全项目任务/模块；PM 可继续派工，链式重复直至阶段闭环
       auto-pm-review-after-verified-pass: true

@@ -131,4 +131,11 @@ public class MagTaskController {
     public ApiResult<List<Map<String, Object>>> taskFlowEvents(@PathVariable Long taskId) {
         return ApiResult.ok(taskService.listTaskFlowEvents(taskId, SecurityUtils.currentUserId()));
     }
+
+    @GetMapping("/tasks/{taskId}/execution-logs")
+    @PreAuthorize("hasAuthority('mag:project:list')")
+    @Operation(summary = "任务 Agent 编排执行记录（成功/失败/触发被拒）")
+    public ApiResult<List<Map<String, Object>>> taskExecutionLogs(@PathVariable Long taskId) {
+        return ApiResult.ok(taskService.listTaskExecutionLogs(taskId, SecurityUtils.currentUserId()));
+    }
 }

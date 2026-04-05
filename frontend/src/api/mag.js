@@ -93,6 +93,11 @@ export function magListTaskFlowEvents(taskId) {
   return http.get(`/mag/tasks/${taskId}/flow-events`)
 }
 
+/** 任务关联 Agent 编排每次终态留痕（成功 / 失败 / 触发被拒） */
+export function magListTaskExecutionLogs(taskId) {
+  return http.get(`/mag/tasks/${taskId}/execution-logs`)
+}
+
 export function magListThreads(projectId) {
   return http.get(`/mag/projects/${projectId}/threads`)
 }

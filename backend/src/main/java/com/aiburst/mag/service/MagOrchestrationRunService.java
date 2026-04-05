@@ -39,6 +39,7 @@ public class MagOrchestrationRunService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final MagTaskAutomationProperties taskAutomationProperties;
     private final MagTaskService taskService;
+    private final MagTaskExecutionLogService taskExecutionLogService;
 
     @Transactional
     public void recordAgentTrigger(long projectId, long agentId, long userId, Map<String, Object> triggerResult) {
@@ -100,6 +101,12 @@ public class MagOrchestrationRunService {
         runMapper.insert(row);
         broadcast(projectId, row.getId());
         if (!accepted) {
+            if (taskId != null
+                    && agentId != null
+                    && MagConstants.ORCH_RUN_KIND_AGENT.equals(runKind)) {
+                taskExecutionLogService.recordFromAgentOrchestration(
+                        row, MagConstants.EXECUTION_OUTCOME_TRIGGER_REJECTED, msg);
+            }
             Map<String, Object> pl = new HashMap<>();
             pl.put("message", msg);
             if (workflowId != null) {
@@ -146,6 +153,9 @@ public class MagOrchestrationRunService {
         MagOrchestrationRun row = runMapper.selectByWorkflowId(workflowId);
         if (row != null) {
             broadcast(row.getProjectId(), row.getId());
+            if ((MagConstants.ORCH_STATUS_SUCCEEDED.equals(status) || MagConstants.ORCH_STATUS_FAILED.equals(status))) {
+                taskExecutionLogService.recordFromAgentOrchestration(row, status, resultSummary);
+            }
             if (MagConstants.ORCH_STATUS_FAILED.equals(status)) {
                 Map<String, Object> pl = new HashMap<>();
                 pl.put("workflowId", workflowId);

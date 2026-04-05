@@ -22,7 +22,8 @@ public class MagTaskAutomationProperties {
     private boolean autoVerifyOnSubmitComplete = true;
 
     /**
-     * 关联任务的 Agent 编排（Temporal Activity）成功结束后，若任务仍为进行中且存在产出物（见
+     * 关联任务的 Agent 编排（Temporal Activity）成功结束后，若任务仍为进行中且存在产出物（本次编排时间窗内
+     * {@code mag_agent_improvement_log} 至少一条，见
      * {@link com.aiburst.mag.service.MagTaskService#tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration}），
      * 是否自动申报完成（进入待核查）。不替代人工「申报完成」接口；VERIFY Agent 的核查编排不满足执行方条件，不会误触发。
      */

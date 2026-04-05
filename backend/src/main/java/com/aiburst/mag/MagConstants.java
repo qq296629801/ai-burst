@@ -43,4 +43,7 @@ public final class MagConstants {
     public static final String ORCH_STATUS_SUCCEEDED = "SUCCEEDED";
     public static final String ORCH_STATUS_FAILED = "FAILED";
     public static final String ORCH_STATUS_REJECTED = "REJECTED";
+
+    /** 任务执行记录：Temporal 触发被拒绝（未进入活动），与编排行 {@link #ORCH_STATUS_REJECTED} 对应但单独命名便于查询 */
+    public static final String EXECUTION_OUTCOME_TRIGGER_REJECTED = "TRIGGER_REJECTED";
 }

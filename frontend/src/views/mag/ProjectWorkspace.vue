@@ -830,6 +830,31 @@
           <el-table-column prop="createdAt" label="时间" width="170" />
         </el-table>
       </el-tab-pane>
+      <el-tab-pane label="执行记录" name="executionLogs">
+        <el-button size="small" style="margin-bottom: 8px" @click="loadFlowExecutionLogs">刷新</el-button>
+        <el-empty
+          v-if="!flowExecutionLogs.length"
+          description="尚无编排执行留痕（任务关联 Agent 跑 Temporal 成功/失败或触发被拒后会出现）"
+        />
+        <el-table v-else :data="flowExecutionLogs" border size="small" max-height="360">
+          <el-table-column prop="id" label="ID" width="72" />
+          <el-table-column label="结果" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" :type="taskExecutionOutcomeTagType(row.executionOutcome)">
+                {{ taskExecutionOutcomeLabel(row.executionOutcome) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="执行 Agent" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ magAgentName(row.agentId) }} (#{{ row.agentId }})</template>
+          </el-table-column>
+          <el-table-column prop="workflowId" label="workflowId" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="orchestrationRunId" label="编排 run" width="96" />
+          <el-table-column prop="resultSummary" label="摘要/错误" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="startedAt" label="开始" width="160" />
+          <el-table-column prop="finishedAt" label="结束" width="160" />
+        </el-table>
+      </el-tab-pane>
     </el-tabs>
   </el-dialog>
 
@@ -958,6 +983,7 @@ import {
   magRunAgent,
   magListOrchestrationRuns,
   magListTaskFlowEvents,
+  magListTaskExecutionLogs,
 } from '@/api/mag'
 import { fetchLlmChannels } from '@/api/llm'
 import { useMagWebSocket } from '@/composables/useMagWebSocket'
@@ -1040,6 +1066,7 @@ const flowDlg = ref(false)
 const flowTask = ref(null)
 const flowEvents = ref([])
 const flowVerifications = ref([])
+const flowExecutionLogs = ref([])
 const flowTab = ref('chart')
 const mmdChainEl = ref(null)
 const mmdPipelineEl = ref(null)
@@ -1604,6 +1631,18 @@ function taskPhaseTagType(state) {
   return 'info'
 }
 
+function taskExecutionOutcomeLabel(outcome) {
+  const m = { SUCCEEDED: '成功', FAILED: '失败', TRIGGER_REJECTED: '触发被拒' }
+  return m[outcome] || outcome || '—'
+}
+
+function taskExecutionOutcomeTagType(outcome) {
+  if (outcome === 'SUCCEEDED') return 'success'
+  if (outcome === 'FAILED') return 'danger'
+  if (outcome === 'TRIGGER_REJECTED') return 'warning'
+  return 'info'
+}
+
 function formatFlowTime(t) {
   if (t == null) return ''
   const s = String(t)
@@ -1711,6 +1750,9 @@ async function onFlowTabChange(name) {
   if (name === 'verifications' && flowTask.value) {
     await loadFlowVerifications()
   }
+  if (name === 'executionLogs' && flowTask.value) {
+    await loadFlowExecutionLogs()
+  }
 }
 
 function onFlowDlgOpened() {
@@ -1728,11 +1770,23 @@ async function loadFlowVerifications() {
   }
 }
 
+async function loadFlowExecutionLogs() {
+  if (!flowTask.value) return
+  try {
+    const res = await magListTaskExecutionLogs(flowTask.value.id)
+    flowExecutionLogs.value = res.data || []
+  } catch {
+    flowExecutionLogs.value = []
+    ElMessage.warning('加载执行记录失败')
+  }
+}
+
 async function openTaskFlow(row) {
   flowTask.value = row
   flowTab.value = 'chart'
   flowEvents.value = []
   flowVerifications.value = []
+  flowExecutionLogs.value = []
   flowDlg.value = true
   try {
     const res = await magListTaskFlowEvents(row.id)

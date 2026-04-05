@@ -83,6 +83,17 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
     }
 
     @Test
+    @WithMockMagUser(authorities = {"mag:project:list"})
+    void tasks_executionLogs() throws Exception {
+        when(taskService.listTaskExecutionLogs(eq(10L), anyLong()))
+                .thenReturn(List.of(Map.of("executionOutcome", "SUCCEEDED", "orchestrationRunId", 1L)));
+        mockMvc.perform(get("/api/mag/tasks/10/execution-logs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].executionOutcome").value("SUCCEEDED"));
+    }
+
+    @Test
     @WithMockMagUser(authorities = {"mag:project:list", "mag:task:dispatch"})
     void tasks_dispatchAndPmReassign() throws Exception {
         when(taskService.dispatch(eq(1L), any(), anyLong())).thenReturn(Map.of("id", 8L));

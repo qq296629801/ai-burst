@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagTaskExecutionLogMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagTaskExecutionLog">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="task_id" property="taskId"/>
+        <result column="agent_id" property="agentId"/>
+        <result column="orchestration_run_id" property="orchestrationRunId"/>
+        <result column="workflow_id" property="workflowId"/>
+        <result column="execution_outcome" property="executionOutcome"/>
+        <result column="result_summary" property="resultSummary"/>
+        <result column="trigger_user_id" property="triggerUserId"/>
+        <result column="started_at" property="startedAt"/>
+        <result column="finished_at" property="finishedAt"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_task_execution_log (
+            project_id, task_id, agent_id, orchestration_run_id, workflow_id,
+            execution_outcome, result_summary, trigger_user_id, started_at, finished_at
+        ) VALUES (
+            #{projectId}, #{taskId}, #{agentId}, #{orchestrationRunId}, #{workflowId},
+            #{executionOutcome}, #{resultSummary}, #{triggerUserId}, #{startedAt}, #{finishedAt}
+        )
+    </insert>
+
+    <select id="selectByTaskId" resultMap="BaseMap">
+        SELECT * FROM mag_task_execution_log
+        WHERE task_id = #{taskId}
+        ORDER BY finished_at DESC, id DESC
+    </select>
+</mapper>

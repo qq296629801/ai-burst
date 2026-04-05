@@ -75,6 +75,15 @@ paths:
       responses:
         '200':
           description: OK — data 为事件数组（eventType、actorType、summary、detailJson 等）
+  /api/mag/tasks/{id}/execution-logs:
+    get:
+      tags: [mag-task]
+      summary: 任务 Agent 编排执行记录（成功/失败/触发被拒；权限 mag:project:list）
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: OK — data 含 executionOutcome、resultSummary、orchestrationRunId、workflowId、startedAt、finishedAt 等
   /api/mag/tasks/{id}/submit-complete:
     post:
       tags: [mag-task]

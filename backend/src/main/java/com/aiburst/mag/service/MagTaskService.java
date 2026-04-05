@@ -22,6 +22,8 @@ import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.mapper.MagMessageMapper;
 import com.aiburst.mag.mapper.MagModuleMapper;
 import com.aiburst.mag.entity.MagTaskFlowEvent;
+import com.aiburst.mag.entity.MagTaskExecutionLog;
+import com.aiburst.mag.mapper.MagTaskExecutionLogMapper;
 import com.aiburst.mag.mapper.MagTaskFlowEventMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.mapper.MagTaskVerificationMapper;
@@ -53,9 +55,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MagTaskService {
 
-    /** 未落库改进日志时，仅当编排最终回复长于该阈值（且非占位 "OK"）才视为文本产出物。 */
-    private static final int MIN_ORCH_RESULT_CHARS_FOR_TEXT_DELIVERABLE = 48;
-
     /** {@code mag_task.block_reason} 列为 VARCHAR(512) */
     private static final int BLOCK_REASON_MAX = 512;
 
@@ -69,6 +68,7 @@ public class MagTaskService {
     private final ObjectMapper objectMapper;
     private final MagTaskFlowRecorder flowRecorder;
     private final MagTaskFlowEventMapper flowEventMapper;
+    private final MagTaskExecutionLogMapper taskExecutionLogMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final MagTaskAutomationProperties taskAutomationProperties;
     private final MagAlertService alertService;
@@ -326,8 +326,8 @@ public class MagTaskService {
 
     /**
      * 在关联任务的 Agent 编排 Activity 已成功结束且事务已提交后调用：
-     * 若任务仍为「进行中」、执行 Agent 与编排一致，且存在产出物（本次编排时间窗内的改进日志，或足够长的非占位最终回复），
-     * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。
+     * 若任务仍为「进行中」、执行 Agent 与编排一致，且存在产出物（本次编排时间窗内在 {@code mag_agent_improvement_log} 至少一条），
+     * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。仅凭模型长文本回复不算产出物。
      *
      * <p>VERIFY Agent 的核查编排虽然带 taskId，但任务处于核查态且 assignee 非 VERIFY，故不会满足条件。
      */
@@ -360,11 +360,11 @@ public class MagTaskService {
             return;
         }
         LocalDateTime since = outputWindowStart != null ? outputWindowStart : LocalDateTime.MIN;
-        if (!hasDeliverableAfterOrchestration(
-                task.getProjectId(), orchestrationAgentId, since, orchestrationResultSummary)) {
+        if (!hasImprovementLogDeliverableAfterOrchestration(task.getProjectId(), orchestrationAgentId, since)) {
             log.debug(
-                    "skip auto submit-complete: taskId={} no deliverable (improvement log in window or long reply)",
-                    taskId);
+                    "skip auto submit-complete: taskId={} no improvement log in orchestration window (orchReplyChars={})",
+                    taskId,
+                    orchestrationResultSummary != null ? orchestrationResultSummary.length() : 0);
             return;
         }
         try {
@@ -381,23 +381,10 @@ public class MagTaskService {
         }
     }
 
-    private boolean hasDeliverableAfterOrchestration(
-            long projectId,
-            long agentId,
-            LocalDateTime sinceInclusive,
-            String orchestrationResultSummary) {
-        int n = improvementLogMapper.countByProjectAgentCreatedAtSince(projectId, agentId, sinceInclusive);
-        if (n > 0) {
-            return true;
-        }
-        if (!StringUtils.hasText(orchestrationResultSummary)) {
-            return false;
-        }
-        String t = orchestrationResultSummary.trim();
-        if (t.isEmpty() || "OK".equalsIgnoreCase(t)) {
-            return false;
-        }
-        return t.length() >= MIN_ORCH_RESULT_CHARS_FOR_TEXT_DELIVERABLE;
+    /** 自动申报完成所认的产出物：仅统计改进日志，不采纳编排最终文本长度。 */
+    private boolean hasImprovementLogDeliverableAfterOrchestration(
+            long projectId, long agentId, LocalDateTime sinceInclusive) {
+        return improvementLogMapper.countByProjectAgentCreatedAtSince(projectId, agentId, sinceInclusive) > 0;
     }
 
     /**
@@ -674,6 +661,18 @@ public class MagTaskService {
         return flowEventMapper.selectByTaskId(taskId).stream().map(this::flowRow).collect(Collectors.toList());
     }
 
+    /** Agent 编排终态执行记录（成功 / 失败 / 触发被拒），按结束时间倒序 */
+    public List<Map<String, Object>> listTaskExecutionLogs(Long taskId, Long userId) {
+        MagTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
+        }
+        accessHelper.requireMember(task.getProjectId(), userId);
+        return taskExecutionLogMapper.selectByTaskId(taskId).stream()
+                .map(this::taskExecutionRow)
+                .collect(Collectors.toList());
+    }
+
     private Map<String, Object> flowRow(MagTaskFlowEvent e) {
         Map<String, Object> m = new HashMap<>();
         m.put("id", e.getId());
@@ -684,6 +683,23 @@ public class MagTaskService {
         m.put("actorAgentId", e.getActorAgentId());
         m.put("summary", e.getSummary());
         m.put("detailJson", e.getDetailJson());
+        m.put("createdAt", e.getCreatedAt());
+        return m;
+    }
+
+    private Map<String, Object> taskExecutionRow(MagTaskExecutionLog e) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("id", e.getId());
+        m.put("projectId", e.getProjectId());
+        m.put("taskId", e.getTaskId());
+        m.put("agentId", e.getAgentId());
+        m.put("orchestrationRunId", e.getOrchestrationRunId());
+        m.put("workflowId", e.getWorkflowId());
+        m.put("executionOutcome", e.getExecutionOutcome());
+        m.put("resultSummary", e.getResultSummary());
+        m.put("triggerUserId", e.getTriggerUserId());
+        m.put("startedAt", e.getStartedAt());
+        m.put("finishedAt", e.getFinishedAt());
         m.put("createdAt", e.getCreatedAt());
         return m;
     }
