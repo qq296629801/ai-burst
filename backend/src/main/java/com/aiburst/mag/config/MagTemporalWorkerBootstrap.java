@@ -30,6 +30,11 @@ public class MagTemporalWorkerBootstrap {
         worker.registerWorkflowImplementationTypes(MagAgentRunWorkflowImpl.class, MagThreadRunWorkflowImpl.class);
         worker.registerActivitiesImplementations(orchestrationActivities);
         workerFactory.start();
-        log.info("MAG Temporal Worker started, taskQueue={} namespace={}", properties.getTaskQueue(), properties.getNamespace());
+        log.info(
+                "MAG Temporal Worker started, taskQueue={} namespace={} (Activity StartToClose 由启动 Workflow 时传入，配置"
+                        + " aiburst.mag.temporal.activity-start-to-close-minutes 默认 {} 分钟)",
+                properties.getTaskQueue(),
+                properties.getNamespace(),
+                properties.getEffectiveActivityStartToCloseMinutes());
     }
 }

@@ -259,7 +259,14 @@
           <el-table-column prop="state" label="状态" width="180">
             <template #default="{ row }">{{ poolStateLabel(row.state) }}</template>
           </el-table-column>
-          <el-table-column prop="payloadJson" label="载荷" show-overflow-tooltip />
+          <el-table-column label="摘要" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ poolRowSummary(row) }}</template>
+          </el-table-column>
+          <el-table-column label="载荷" width="120" align="center">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="openPoolPayloadMarkdown(row)">Markdown 查看</el-button>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="320">
             <template #default="{ row }">
               <template v-if="row.state === 'PENDING_USER'">
@@ -599,14 +606,36 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="workOutputDetailDlg" title="产出物全文" width="720px" destroy-on-close>
+  <el-dialog v-model="workOutputDetailDlg" title="产出物全文" width="800px" destroy-on-close>
     <div v-if="workOutputDetail" class="work-output-detail-head">
       <el-tag size="small" :type="workOutputKindTagType(workOutputDetail.kind)">
         {{ workOutputKindLabel(workOutputDetail.kind) }}
       </el-tag>
       <span class="work-output-detail-meta">{{ workOutputDetail.summary }}</span>
     </div>
-    <pre v-if="workOutputDetail" class="work-output-detail-body">{{ workOutputDetailBody }}</pre>
+    <div
+      v-if="workOutputDetail && workOutputDetailUsesMarkdown"
+      class="mag-md-body work-output-md"
+      v-html="workOutputDetailRenderedHtml"
+    />
+    <pre v-else-if="workOutputDetail" class="work-output-detail-body">{{ workOutputDetailBody }}</pre>
+  </el-dialog>
+
+  <el-dialog
+    v-model="poolPayloadDlg"
+    :title="poolPayloadDlgTitle"
+    width="880px"
+    destroy-on-close
+    class="pool-payload-md-dialog"
+  >
+    <el-tabs v-if="poolPayloadViewRow" v-model="poolPayloadTab">
+      <el-tab-pane label="Markdown 预览" name="preview">
+        <div class="mag-md-body pool-payload-md" v-html="poolPayloadRenderedHtml" />
+      </el-tab-pane>
+      <el-tab-pane label="原始 JSON" name="raw">
+        <pre class="pool-payload-raw">{{ poolPayloadRawText }}</pre>
+      </el-tab-pane>
+    </el-tabs>
   </el-dialog>
 
   <el-dialog v-model="verifyDlg" title="核查裁定" width="520px" destroy-on-close>
@@ -879,6 +908,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { renderMarkdownToSafeHtml } from '@/utils/renderMarkdown'
 import {
   magGetProject,
   magListMembers,
@@ -1042,6 +1072,114 @@ const workOutputDetailBody = computed(() => {
   if (b == null) return ''
   return typeof b === 'string' ? b : JSON.stringify(b, null, 2)
 })
+
+const workOutputDetailUsesMarkdown = computed(() => {
+  const k = workOutputDetail.value?.kind
+  return k === 'REQUIREMENT_POOL' || k === 'REQUIREMENT_DOC'
+})
+
+const workOutputDetailRenderedHtml = computed(() => {
+  const row = workOutputDetail.value
+  if (!row) return ''
+  if (row.kind === 'REQUIREMENT_DOC') {
+    const c = row.body
+    const s = typeof c === 'string' ? c : ''
+    return renderMarkdownToSafeHtml(s.trim() ? s : '_（空正文）_')
+  }
+  if (row.kind === 'REQUIREMENT_POOL') {
+    const body = row.body
+    const payloadJson = typeof body === 'string' ? body : JSON.stringify(body ?? {})
+    return renderMarkdownToSafeHtml(buildPoolPayloadMarkdownFromPayloadJson(payloadJson))
+  }
+  return ''
+})
+
+const poolPayloadDlg = ref(false)
+const poolPayloadViewRow = ref(null)
+const poolPayloadTab = ref('preview')
+
+const poolPayloadDlgTitle = computed(() => {
+  const r = poolPayloadViewRow.value
+  return r ? `需求池 #${r.id} · Markdown` : '需求池载荷'
+})
+
+const poolPayloadRenderedHtml = computed(() => {
+  const row = poolPayloadViewRow.value
+  if (!row) return ''
+  return renderMarkdownToSafeHtml(buildPoolPayloadMarkdownFromPayloadJson(row.payloadJson))
+})
+
+const poolPayloadRawText = computed(() => {
+  const row = poolPayloadViewRow.value
+  if (!row) return ''
+  const raw = row.payloadJson
+  if (raw == null || raw === '') return ''
+  if (typeof raw === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2)
+    } catch {
+      return raw
+    }
+  }
+  try {
+    return JSON.stringify(raw, null, 2)
+  } catch {
+    return String(raw)
+  }
+})
+
+function parsePoolPayloadObject(payloadJson) {
+  if (payloadJson == null || payloadJson === '') return null
+  try {
+    return typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson
+  } catch {
+    return null
+  }
+}
+
+/** 需求池表格「摘要」列 */
+function poolRowSummary(row) {
+  const p = parsePoolPayloadObject(row?.payloadJson)
+  if (p && typeof p === 'object' && typeof p.summary === 'string' && p.summary.trim()) {
+    return p.summary.trim()
+  }
+  return '—'
+}
+
+function buildPoolPayloadMarkdownFromPayloadJson(payloadJson) {
+  const p = parsePoolPayloadObject(payloadJson)
+  if (!p || typeof p !== 'object') {
+    const fallback = payloadJson != null ? String(payloadJson) : ''
+    return '## 载荷\n\n```text\n' + fallback + '\n```\n'
+  }
+  const summary = p.summary != null ? String(p.summary) : ''
+  const md = p.proposedMarkdown != null ? String(p.proposedMarkdown) : ''
+  const source = p.source != null ? String(p.source) : ''
+  const lines = []
+  lines.push('## 摘要\n\n', summary.trim() || '_（无）_', '\n')
+  if (source.trim()) {
+    lines.push('\n**来源**：`', source, '`\n')
+  }
+  lines.push('\n---\n\n## 建议正文（Markdown）\n\n', md.trim() ? md : '_（无 proposedMarkdown）_', '\n')
+  const extra = { ...p }
+  delete extra.summary
+  delete extra.proposedMarkdown
+  delete extra.source
+  if (Object.keys(extra).length) {
+    lines.push(
+      '\n\n---\n\n## 其它字段\n\n```json\n',
+      JSON.stringify(extra, null, 2),
+      '\n```\n',
+    )
+  }
+  return lines.join('')
+}
+
+function openPoolPayloadMarkdown(row) {
+  poolPayloadViewRow.value = row
+  poolPayloadTab.value = 'preview'
+  poolPayloadDlg.value = true
+}
 
 const verifyDlg = ref(false)
 const verifyTask = ref(null)
@@ -2420,5 +2558,117 @@ async function runAgentRow(row) {
   font-size: 12px;
   color: var(--el-color-warning);
   margin: 8px;
+}
+
+/* Markdown 预览（v-html + DOMPurify） */
+.mag-md-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--el-text-color-primary);
+  word-break: break-word;
+}
+.mag-md-body :deep(h1) {
+  font-size: 1.35em;
+  margin: 0.75em 0 0.4em;
+  font-weight: 600;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 0.25em;
+}
+.mag-md-body :deep(h2) {
+  font-size: 1.2em;
+  margin: 0.85em 0 0.4em;
+  font-weight: 600;
+}
+.mag-md-body :deep(h3) {
+  font-size: 1.08em;
+  margin: 0.75em 0 0.35em;
+  font-weight: 600;
+}
+.mag-md-body :deep(p) {
+  margin: 0.5em 0;
+}
+.mag-md-body :deep(ul),
+.mag-md-body :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.mag-md-body :deep(li) {
+  margin: 0.2em 0;
+}
+.mag-md-body :deep(blockquote) {
+  margin: 0.6em 0;
+  padding: 0.35em 0.85em;
+  border-left: 4px solid var(--el-color-primary-light-5);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+}
+.mag-md-body :deep(pre) {
+  margin: 0.65em 0;
+  padding: 12px 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.mag-md-body :deep(code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+}
+.mag-md-body :deep(p code),
+.mag-md-body :deep(li code) {
+  padding: 0.1em 0.35em;
+  background: var(--el-fill-color);
+  border-radius: 4px;
+}
+.mag-md-body :deep(pre code) {
+  padding: 0;
+  background: transparent;
+}
+.mag-md-body :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.65em 0;
+  font-size: 13px;
+}
+.mag-md-body :deep(th),
+.mag-md-body :deep(td) {
+  border: 1px solid var(--el-border-color);
+  padding: 6px 10px;
+  text-align: left;
+}
+.mag-md-body :deep(th) {
+  background: var(--el-fill-color-light);
+}
+.mag-md-body :deep(a) {
+  color: var(--el-color-primary);
+}
+.mag-md-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin: 1em 0;
+}
+.pool-payload-md {
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  padding: 4px 2px 12px;
+}
+.pool-payload-raw {
+  margin: 0;
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.work-output-md {
+  max-height: min(65vh, 520px);
+  overflow-y: auto;
+  margin-top: 10px;
+  padding: 4px 2px;
 }
 </style>

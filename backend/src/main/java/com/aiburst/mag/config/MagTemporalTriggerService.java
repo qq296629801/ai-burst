@@ -59,7 +59,8 @@ public class MagTemporalTriggerService {
         try {
             String instr = workflowInstruction != null ? workflowInstruction : "";
             long tid = taskContextTaskId != null ? taskContextTaskId : 0L;
-            WorkflowClient.start(stub::execute, agentId, userId, instr, tid);
+            int actMin = properties.getEffectiveActivityStartToCloseMinutes();
+            WorkflowClient.start(stub::execute, agentId, userId, instr, tid, actMin);
         } catch (WorkflowExecutionAlreadyStarted e) {
             log.warn("MAG agent workflow already started: {}", workflowId);
             return successResponse(workflowId, MSG_STARTED, "agentId", agentId);
@@ -93,7 +94,8 @@ public class MagTemporalTriggerService {
                         .build();
         MagThreadRunWorkflow stub = wc.newWorkflowStub(MagThreadRunWorkflow.class, options);
         try {
-            WorkflowClient.start(stub::execute, threadId, userId);
+            int actMin = properties.getEffectiveActivityStartToCloseMinutes();
+            WorkflowClient.start(stub::execute, threadId, userId, actMin);
         } catch (WorkflowExecutionAlreadyStarted e) {
             log.warn("MAG thread workflow already started: {}", workflowId);
             return successResponse(workflowId, MSG_STARTED, "threadId", threadId);

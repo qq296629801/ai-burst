@@ -70,6 +70,8 @@ aiburst:
       target: "127.0.0.1:7233"
       namespace: default
       task-queue: mag-orchestration
+      # Agent/线程 Workflow 内 Activity 的 StartToClose（分钟）；过短易出现 activity timed out / NOT_FOUND
+      activity-start-to-close-minutes: 30
   jwt:
     secret: "ai-burst-change-this-secret-key-at-least-32-chars!!"
     expire-minutes: 120

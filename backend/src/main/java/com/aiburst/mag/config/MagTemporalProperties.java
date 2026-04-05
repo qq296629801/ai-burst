@@ -25,4 +25,22 @@ public class MagTemporalProperties {
 
     /** Worker 与 startWorkflow 共用的任务队列名 */
     private String taskQueue = "mag-orchestration";
+
+    /**
+     * Activity {@code StartToClose} 超时（分钟），覆盖 Agent/线程编排单次 Activity（含 AgentScope 整段执行）。
+     * 过短易导致 LLM 慢响应时出现 NOT_FOUND: activity already timed out；建议 ≥15。
+     */
+    private int activityStartToCloseMinutes = 30;
+
+    /** 供 Worker 注册使用，限制在合理区间，避免配置误填 */
+    public int getEffectiveActivityStartToCloseMinutes() {
+        int m = activityStartToCloseMinutes;
+        if (m < 1) {
+            return 1;
+        }
+        if (m > 480) {
+            return 480;
+        }
+        return m;
+    }
 }
