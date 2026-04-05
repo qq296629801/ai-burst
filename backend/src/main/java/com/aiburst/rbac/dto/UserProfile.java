@@ -1,4 +1,4 @@
-package com.aiburst.dto;
+package com.aiburst.rbac.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

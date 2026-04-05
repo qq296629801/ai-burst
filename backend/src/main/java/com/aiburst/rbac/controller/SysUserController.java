@@ -2,8 +2,8 @@ package com.aiburst.rbac.controller;
 
 import com.aiburst.common.ApiResult;
 import com.aiburst.dto.PageResult;
-import com.aiburst.dto.UserPageQuery;
-import com.aiburst.dto.UserSaveRequest;
+import com.aiburst.rbac.dto.UserPageQuery;
+import com.aiburst.rbac.dto.UserSaveRequest;
 import com.aiburst.rbac.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;

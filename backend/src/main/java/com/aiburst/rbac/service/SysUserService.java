@@ -1,8 +1,8 @@
 package com.aiburst.rbac.service;
 
 import com.aiburst.dto.PageResult;
-import com.aiburst.dto.UserPageQuery;
-import com.aiburst.dto.UserSaveRequest;
+import com.aiburst.rbac.dto.UserPageQuery;
+import com.aiburst.rbac.dto.UserSaveRequest;
 import com.aiburst.rbac.entity.SysUser;
 import com.aiburst.rbac.mapper.UserMapper;
 import com.aiburst.rbac.security.SecurityUtils;

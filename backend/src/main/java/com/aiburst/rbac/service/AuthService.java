@@ -1,8 +1,8 @@
 package com.aiburst.rbac.service;
 
-import com.aiburst.dto.LoginRequest;
-import com.aiburst.dto.LoginResponse;
-import com.aiburst.dto.UserProfile;
+import com.aiburst.rbac.dto.LoginRequest;
+import com.aiburst.rbac.dto.LoginResponse;
+import com.aiburst.rbac.dto.UserProfile;
 import com.aiburst.rbac.entity.SysUser;
 import com.aiburst.rbac.mapper.UserMapper;
 import com.aiburst.rbac.dto.MenuVO;

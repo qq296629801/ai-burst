@@ -1,6 +1,5 @@
-package com.aiburst.dto;
+package com.aiburst.rbac.dto;
 
-import com.aiburst.rbac.dto.MenuVO;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
