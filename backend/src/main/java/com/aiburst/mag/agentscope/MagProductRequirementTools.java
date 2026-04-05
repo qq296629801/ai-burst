@@ -43,7 +43,8 @@ public final class MagProductRequirementTools {
             name = "mag_submit_dev_requirement_candidate",
             description =
                     "根据需求文档整理「开发侧需求说明」，直接合并进需求文档新版本（无需求池）。"
-                            + "summary 必填；proposedMarkdown 为建议正文（会并入 mag_requirement_revision.content）。"
+                            + "summary 必填；proposedMarkdown 为建议正文（会并入 mag_requirement_revision.content）；"
+                            + "若 proposedMarkdown 为空，会以 summary 生成一版最小修订以便留痕与自动结项。"
                             + "若当前编排关联了任务且写入了新版本，系统可在配置允许时自动将该任务申报为已完成。"
                             + "后续以需求文档编辑与版本列表为确认来源。")
     public String submitDevRequirementCandidate(

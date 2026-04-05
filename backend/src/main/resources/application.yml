@@ -44,6 +44,7 @@ aiburst:
       a2a-max-depth: 5
       # 根级 Agent 编排单线程 FIFO 排队依次执行（嵌套 A2A 不入队）；多 Worker 进程时每个进程各有一条队列
       serial-agent-run: true
+      # 与 ReAct 流 block 上限取大（见 MagAgentScopeRunService）；可单独加大排队容忍，避免旧版「100min 外层先超时、内层仍跑」导致 RUNNING 僵死
       serial-queue-timeout-seconds: 6000
     mcp:
       enabled: false

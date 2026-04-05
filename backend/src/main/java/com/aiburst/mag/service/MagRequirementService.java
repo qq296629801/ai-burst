@@ -75,6 +75,10 @@ public class MagRequirementService {
         Long newRevId = null;
         if (StringUtils.hasText(proposedMarkdown)) {
             newRevId = appendMergedRequirementRevision(projectId, proposedMarkdown, userId);
+        } else {
+            // 仅有 summary 时也落一版修订，便于产品任务在「已提交合并工具」路径上拿到 revisionId 并自动结项
+            String body = "### 产品摘要（Agent）\n\n" + summary.trim();
+            newRevId = appendMergedRequirementRevision(projectId, body, userId);
         }
         Map<String, Object> out = new HashMap<>();
         out.put("revisionId", newRevId);

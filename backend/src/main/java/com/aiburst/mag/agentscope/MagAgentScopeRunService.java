@@ -50,6 +50,7 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -136,13 +137,37 @@ public class MagAgentScopeRunService {
         if (serialAgentRun && d == 0) {
             try {
                 Long capTask = taskContextTaskId;
-                return serialRunner
-                        .submit(() -> executeAgentRunWithinDepth(agent, triggerUserId, instruction, capTask))
-                        .get(Math.max(serialQueueTimeoutSeconds, callTimeoutSeconds + 60), TimeUnit.SECONDS);
+                int reactIters = "PM".equals(agent.getRoleType()) ? pmMaxIters : maxIters;
+                long streamBlockCap = resolveStreamBlockTimeoutSeconds(reactIters);
+                /*
+                 * 外层 Future.get 必须 ≥ 内层 collectList().block(streamBlockCap)，否则会先抛 TimeoutException，
+                 * 而串行工作线程仍在执行，表现为编排库表长时间 RUNNING / 与 Temporal 状态不一致。
+                 */
+                long waitCap =
+                        Math.max(
+                                serialQueueTimeoutSeconds,
+                                Math.max(callTimeoutSeconds + 60L, streamBlockCap + 300L));
+                log.info(
+                        "MAG serial root run enqueue agentId={} projectId={} waitCapSec={} streamBlockCapSec={}",
+                        agent.getId(),
+                        agent.getProjectId(),
+                        waitCap,
+                        streamBlockCap);
+                Future<String> future =
+                        serialRunner.submit(
+                                () -> executeAgentRunWithinDepth(agent, triggerUserId, instruction, capTask));
+                try {
+                    return future.get(waitCap, TimeUnit.SECONDS);
+                } catch (TimeoutException te) {
+                    future.cancel(true);
+                    throw te;
+                }
             } catch (TimeoutException e) {
                 throw new MagBusinessException(
                         MagResultCode.MAG_UNKNOWN,
-                        "Agent 编排队列等待/执行超时（serial-queue-timeout-seconds=" + serialQueueTimeoutSeconds + "）");
+                        "Agent 编排队列等待/执行超时（须 ≥ 内层 ReAct 流 block 上限；已按 streamBlockCap+300s 与 serial-queue-timeout-seconds 取大，当前配置 serial-queue-timeout-seconds="
+                                + serialQueueTimeoutSeconds
+                                + "）");
             } catch (ExecutionException e) {
                 Throwable c = e.getCause();
                 if (c instanceof RuntimeException re) {

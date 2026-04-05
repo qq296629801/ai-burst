@@ -72,6 +72,21 @@ public class MagTaskDispatchAutomationListener {
             return;
         }
         if (!Boolean.TRUE.equals(runRes.get("accepted"))) {
+            String msg =
+                    runRes.get("message") != null
+                            ? String.valueOf(runRes.get("message"))
+                            : "Temporal 未受理编排（accepted=false），任务将保持待处理";
+            log.warn(
+                    "MAG auto agent run not accepted taskId={} projectId={} message={}",
+                    ev.taskId(),
+                    ev.projectId(),
+                    msg);
+            alertService.raise(
+                    task.getProjectId(),
+                    task.getId(),
+                    "TASK_AUTO_ORCH_TRIGGER_REJECTED",
+                    "WARN",
+                    Map.of("message", msg, "reason", "DISPATCH_AUTO_START"));
             return;
         }
         try {

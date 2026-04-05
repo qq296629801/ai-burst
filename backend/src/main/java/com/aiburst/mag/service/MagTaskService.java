@@ -325,6 +325,8 @@ public class MagTaskService {
      * 在关联任务的 Agent 编排 Activity 已成功结束且事务已提交后调用：
      * 若任务仍为「进行中」、执行 Agent 与编排一致，且编排最终回复非空（trim 后），
      * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。
+     * <p>产品（PRODUCT）职能：常经 A2A 子轮次完成工作，最终 Activity 摘要偶发为空；此时仍视为成功产出，
+     * 只要 assignee 与编排 Agent 一致即允许自动结项（与 {@link #tryAutoSubmitAfterProductRequirementMerge} 互补）。
      */
     public void tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration(
             long taskId,
@@ -354,7 +356,9 @@ public class MagTaskService {
                     orchestrationAgentId);
             return;
         }
-        if (!hasNonEmptyOrchestrationReply(orchestrationResultSummary)) {
+        MagAgent orchAgent = agentMapper.selectById(orchestrationAgentId);
+        boolean productRole = orchAgent != null && "PRODUCT".equals(orchAgent.getRoleType());
+        if (!productRole && !hasNonEmptyOrchestrationReply(orchestrationResultSummary)) {
             log.debug(
                     "skip auto submit-complete: taskId={} empty orchestration reply",
                     taskId);

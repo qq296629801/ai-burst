@@ -49,19 +49,6 @@
               </el-button>
             </template>
           </el-table-column>
-          <el-table-column label="编排" width="120">
-            <template #default="{ row }">
-              <el-button
-                v-permission="'mag:task:operate'"
-                link
-                type="primary"
-                size="small"
-                @click="runAgentRow(row)"
-              >
-                触发 run
-              </el-button>
-            </template>
-          </el-table-column>
         </el-table>
       </el-tab-pane>
       <el-tab-pane label="模块" name="modules">
@@ -275,9 +262,9 @@
     </el-tabs>
   </el-card>
 
-  <el-dialog v-model="agentDlg" :title="agentEditingId ? '编辑 Agent' : '新建 Agent'" width="520px" destroy-on-close>
+  <el-dialog v-model="agentDlg" :title="agentEditingId ? '编辑 Agent' : '新建 Agent'" width="560px" destroy-on-close>
     <el-form label-width="108px">
-      <el-form-item label="类型" required>
+      <el-form-item v-if="agentEditingId" label="类型" required>
         <el-select v-model="agentForm.roleType" placeholder="选择类型" style="width: 100%">
           <el-option
             v-for="opt in agentRoleOptions"
@@ -287,11 +274,31 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="名称" required><el-input v-model="agentForm.name" /></el-form-item>
+      <el-form-item v-else label="类型" required>
+        <el-select
+          v-model="agentForm.roleTypes"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
+          placeholder="可多选：PM、产品、前端、后端、测试等"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="opt in agentRoleOptions"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          />
+        </el-select>
+        <div class="form-hint">每种类型各创建一个 Agent，共用下方名称前缀与通道。</div>
+      </el-form-item>
+      <el-form-item :label="agentEditingId ? '名称' : '名称前缀'" required>
+        <el-input v-model="agentForm.name" :placeholder="agentEditingId ? 'Agent 名称' : '例如：默认、团队A'" />
+      </el-form-item>
       <el-form-item label="大模型通道">
         <el-select
           v-model="agentForm.llmChannelId"
-          placeholder="选择本人名下的通道（触发编排必填）"
+          placeholder="选择本人名下的通道（派工自动编排等场景必填）"
           filterable
           clearable
           style="width: 100%"
@@ -303,7 +310,7 @@
             :value="c.id"
           />
         </el-select>
-        <div class="form-hint">须与「大模型 → 通道配置」中当前账号创建的通道一致，否则触发 run 会报未绑定/无权限。</div>
+        <div class="form-hint">须与「大模型 → 通道配置」中当前账号创建的通道一致，否则自动编排会报未绑定/无权限。</div>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -639,7 +646,6 @@ import {
   magListMessages,
   magPostMessage,
   magRunThread,
-  magRunAgent,
   magListOrchestrationRuns,
   magListTaskFlowEvents,
   magListTaskExecutionLogs,
@@ -693,7 +699,23 @@ const agentRoleOptions = [
 const agentDlg = ref(false)
 const agentEditingId = ref(null)
 const llmChannels = ref([])
-const agentForm = ref({ roleType: 'BACKEND', name: '', llmChannelId: null })
+/** 编辑用 roleType；新建批量用 roleTypes（与 agentRoleOptions.value 同枚举） */
+const agentForm = ref({
+  roleType: 'BACKEND',
+  roleTypes: [],
+  name: '',
+  llmChannelId: null,
+})
+
+/** 批量创建时类型顺序固定，名称后缀可读 */
+const agentRoleCreateOrder = ['PM', 'PRODUCT', 'BACKEND', 'FRONTEND', 'TEST']
+const agentRoleNameSuffix = {
+  PM: 'PM',
+  PRODUCT: '产品',
+  BACKEND: '后端',
+  FRONTEND: '前端',
+  TEST: '测试',
+}
 const dispatchDlg = ref(false)
 const dispatchForm = ref({ title: '', description: '', moduleId: null, assigneeAgentId: null })
 const reassignDlg = ref(false)
@@ -936,7 +958,7 @@ function agentChannelLabel(channelId) {
 
 function openAgent() {
   agentEditingId.value = null
-  agentForm.value = { roleType: 'BACKEND', name: '', llmChannelId: null }
+  agentForm.value = { roleType: 'BACKEND', roleTypes: [], name: '', llmChannelId: null }
   loadLlmChannelsForAgent()
   agentDlg.value = true
 }
@@ -945,6 +967,7 @@ function openEditAgent(row) {
   agentEditingId.value = row.id
   agentForm.value = {
     roleType: row.roleType || 'BACKEND',
+    roleTypes: [],
     name: row.name || '',
     llmChannelId: row.llmChannelId ?? null,
   }
@@ -954,22 +977,60 @@ function openEditAgent(row) {
 
 async function saveAgent() {
   if (!agentForm.value.name?.trim()) {
-    ElMessage.warning('请输入名称')
+    ElMessage.warning(agentEditingId.value ? '请输入名称' : '请输入名称前缀')
     return
   }
-  const body = {
-    roleType: agentForm.value.roleType,
-    name: agentForm.value.name.trim(),
-    llmChannelId: agentForm.value.llmChannelId ?? null,
-  }
+  const baseName = agentForm.value.name.trim()
+  const llmChannelId = agentForm.value.llmChannelId ?? null
+
   if (agentEditingId.value) {
-    await magUpdateAgent(agentEditingId.value, { ...body, applyLlmChannelId: true })
+    const body = {
+      roleType: agentForm.value.roleType,
+      name: baseName,
+      llmChannelId,
+      applyLlmChannelId: true,
+    }
+    await magUpdateAgent(agentEditingId.value, body)
     ElMessage.success('已保存')
-  } else {
-    await magCreateAgent(projectId.value, body)
-    ElMessage.success('已创建')
+    agentDlg.value = false
+    loadAgents()
+    return
   }
-  agentDlg.value = false
+
+  const picked = agentForm.value.roleTypes || []
+  if (picked.length === 0) {
+    ElMessage.warning('请至少选择一种 Agent 类型')
+    return
+  }
+  const ordered = [
+    ...agentRoleCreateOrder.filter((r) => picked.includes(r)),
+    ...picked.filter((r) => !agentRoleCreateOrder.includes(r)),
+  ]
+  let ok = 0
+  let lastErr = ''
+  for (const rt of ordered) {
+    const suffix = agentRoleNameSuffix[rt] || rt
+    const body = {
+      roleType: rt,
+      name: `${baseName}-${suffix}`,
+      llmChannelId,
+    }
+    try {
+      await magCreateAgent(projectId.value, body)
+      ok += 1
+    } catch (e) {
+      lastErr = e?.response?.data?.message || e?.message || String(e)
+      break
+    }
+  }
+  if (ok === ordered.length) {
+    ElMessage.success(`已创建 ${ok} 个 Agent`)
+    agentDlg.value = false
+  } else if (ok > 0) {
+    ElMessage.warning(`已创建 ${ok}/${ordered.length} 个，未全部成功（详见上方错误提示）`)
+    agentDlg.value = false
+  }
+  // ok===0 时 axios 拦截器已弹出错误，此处不再重复
   loadAgents()
 }
 
@@ -1529,37 +1590,6 @@ async function runThreadRow(row) {
   await loadOrchestrationRuns()
 }
 
-async function runAgentRow(row) {
-  let runBody = {}
-  if (row.roleType === 'PM') {
-    try {
-      const { value } = await ElMessageBox.prompt(
-        '可选：派工说明（传给 PM AgentScope，由模型调用 dispatch_task 等工具落库）',
-        '触发 PM 编排',
-        {
-          confirmButtonText: '确定',
-          cancelButtonText: '跳过说明',
-          distinguishCancelAndClose: true,
-          inputType: 'textarea',
-          inputPlaceholder: '例如：给后端 Agent（先 list_dispatchable_agents 看 id）派任务「实现登录接口」',
-        },
-      )
-      const v = value?.trim()
-      if (v) runBody = { instruction: v }
-    } catch (e) {
-      if (e !== 'cancel') return
-    }
-  }
-  const res = await magRunAgent(row.id, runBody)
-  const data = res.data
-  const msg = runResultMessage(data)
-  if (data?.accepted === false) {
-    ElMessage.warning(msg)
-  } else {
-    ElMessage.success(msg)
-  }
-  await loadOrchestrationRuns()
-}
 </script>
 
 <style scoped>
