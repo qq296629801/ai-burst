@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 核查结项（PASS→DONE）后：若项目内**全部**任务均为已完成，写入告警供用户在项目「告警」中查看，
+ * 任务结项（进入 DONE）后：若项目内**全部**任务均为已完成，写入告警供用户在项目「告警」中查看，
  * 提示本阶段任务已清空、需由用户或项目经理再派发新任务。
  */
 @Slf4j
@@ -28,7 +28,7 @@ public class MagAllTasksDoneNotifyListener {
     private final MagTaskAutomationProperties props;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onVerifiedPass(MagTaskVerifiedPassEvent ev) {
+    public void onTaskMarkedDone(MagTaskMarkedDoneEvent ev) {
         if (!props.isNotifyWhenAllTasksDone()) {
             return;
         }

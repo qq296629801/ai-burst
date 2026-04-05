@@ -8,10 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 
 /**
- * 测试/核查（VERIFY）：记录单元测试与断言设计，落库改进日志；具体执行测试仍由 CI/本地工具链完成。
+ * 测试职能（TEST）：记录单元测试与断言设计，落库改进日志；具体执行测试仍由 CI/本地工具链完成。
  */
 @RequiredArgsConstructor
-public final class MagVerifyTestTools {
+public final class MagTestUnitPlanTools {
 
     private final long projectId;
     private final long triggerUserId;
@@ -31,7 +31,7 @@ public final class MagVerifyTestTools {
         }
         try {
             MagImprovementCreateRequest req = new MagImprovementCreateRequest();
-            req.setChangeType("VERIFY_UNIT_PLAN");
+            req.setChangeType("TEST_UNIT_PLAN");
             req.setSummary(
                     scopeSummary.trim().length() > 512
                             ? scopeSummary.trim().substring(0, 512)

@@ -152,26 +152,6 @@
               </el-button>
               <el-button
                 v-permission="'mag:task:operate'"
-                v-if="row.state === 'PENDING_VERIFY' || row.state === 'VERIFYING'"
-                link
-                type="success"
-                size="small"
-                @click="openVerify(row)"
-              >
-                核查裁定
-              </el-button>
-              <el-button
-                v-permission="'mag:task:operate'"
-                v-if="row.state === 'PENDING_VERIFY'"
-                link
-                type="info"
-                size="small"
-                @click="beginVerifyOnly(row)"
-              >
-                进入核查中
-              </el-button>
-              <el-button
-                v-permission="'mag:task:operate'"
                 v-if="row.state !== 'DONE' && row.state !== 'BLOCKED'"
                 link
                 type="warning"
@@ -378,7 +358,22 @@
             </template>
           </el-table-column>
           <el-table-column prop="message" label="说明" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="resultSummary" label="结果/错误" min-width="120" show-overflow-tooltip />
+          <el-table-column label="结果/错误" min-width="200">
+            <template #default="{ row }">
+              <div v-if="row.resultSummary" class="result-md-list-cell">
+                <span class="result-md-list-text" :title="row.resultSummary">{{ row.resultSummary }}</span>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="openResultMarkdownPreview('编排执行 · 结果/错误', row.resultSummary)"
+                >
+                  预览
+                </el-button>
+              </div>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="finishedAt" label="结束时间" width="170" />
         </el-table>
       </el-tab-pane>
@@ -621,6 +616,10 @@
     <pre v-else-if="workOutputDetail" class="work-output-detail-body">{{ workOutputDetailBody }}</pre>
   </el-dialog>
 
+  <el-dialog v-model="magResultMdPreviewDlg" :title="magResultMdPreviewTitle" width="720px" destroy-on-close>
+    <div class="mag-md-body mag-result-md-dialog-body" v-html="magResultMdPreviewRenderedHtml" />
+  </el-dialog>
+
   <el-dialog
     v-model="poolPayloadDlg"
     :title="poolPayloadDlgTitle"
@@ -636,40 +635,6 @@
         <pre class="pool-payload-raw">{{ poolPayloadRawText }}</pre>
       </el-tab-pane>
     </el-tabs>
-  </el-dialog>
-
-  <el-dialog v-model="verifyDlg" title="核查裁定" width="520px" destroy-on-close>
-    <p v-if="verifyTask" class="form-hint">
-      任务 #{{ verifyTask.id }} · {{ verifyTask.state }}。PASS 结项（DONE），FAIL 退回执行中（IN_PROGRESS）。
-    </p>
-    <el-form label-width="112px" style="margin-top: 8px">
-      <el-form-item label="核查 Agent" required>
-        <el-select v-model="verifyForm.verifierAgentId" filterable placeholder="须为 VERIFY 角色" style="width: 100%">
-          <el-option
-            v-for="a in verifyAgentOptions"
-            :key="a.id"
-            :label="`${a.name} (#${a.id})`"
-            :value="a.id"
-          />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="结论" required>
-        <el-radio-group v-model="verifyForm.result">
-          <el-radio-button label="PASS">通过 PASS</el-radio-button>
-          <el-radio-button label="FAIL">不通过 FAIL</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
-      <el-form-item label="依据说明" required>
-        <el-input v-model="verifyForm.rationale" type="textarea" :rows="4" placeholder="核查结论与依据" />
-      </el-form-item>
-      <el-form-item label="证据摘要">
-        <el-input v-model="verifyForm.evidenceSummary" type="textarea" :rows="2" placeholder="可选" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="verifyDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveVerifyDecision">提交裁定</el-button>
-    </template>
   </el-dialog>
 
   <el-dialog v-model="reqNextDlg" title="要活 request-next" width="440px">
@@ -775,7 +740,7 @@
     <el-tabs v-model="flowTab" @tab-change="onFlowTabChange">
       <el-tab-pane label="流程图" name="chart">
         <p class="flow-hint">
-          下图按<strong>项目经理派工 → 执行方干活 → 申报与核查</strong>展示标准走向；<strong>橙色高亮</strong>为当前所处环节。下方为系统已记录的实际事件链。
+          下图按<strong>项目经理派工 → 执行方干活 → 申报结项</strong>展示标准走向；<strong>橙色高亮</strong>为当前所处环节。下方为系统已记录的实际事件链。
         </p>
         <el-steps
           class="task-flow-steps"
@@ -786,8 +751,8 @@
         >
           <el-step title="派工落地" description="PM / PM Agent 指定执行人" />
           <el-step title="待开始 → 执行中" description="执行方点击「开始」后进入干活" />
-          <el-step title="申报完成" description="提交待核查" />
-          <el-step title="结项" description="核查通过后完成" />
+          <el-step title="申报完成" description="执行方提交后任务标记为已完成" />
+          <el-step title="已完成" description="DONE" />
         </el-steps>
         <el-alert
           v-if="flowTask?.state === 'BLOCKED'"
@@ -816,20 +781,6 @@
           </el-timeline-item>
         </el-timeline>
       </el-tab-pane>
-      <el-tab-pane label="核查记录" name="verifications">
-        <el-button size="small" style="margin-bottom: 8px" @click="loadFlowVerifications">刷新</el-button>
-        <el-empty v-if="!flowVerifications.length" description="尚无 mag_task_verification 记录（提交核查裁定后会出现）" />
-        <el-table v-else :data="flowVerifications" border size="small" max-height="360">
-          <el-table-column prop="id" label="ID" width="72" />
-          <el-table-column prop="result" label="结果" width="88" />
-          <el-table-column label="核查 Agent" min-width="140" show-overflow-tooltip>
-            <template #default="{ row }">{{ magAgentName(row.verifierAgentId) }} (#{{ row.verifierAgentId }})</template>
-          </el-table-column>
-          <el-table-column prop="rationale" label="依据" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="evidenceSummary" label="证据摘要" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="createdAt" label="时间" width="170" />
-        </el-table>
-      </el-tab-pane>
       <el-tab-pane label="执行记录" name="executionLogs">
         <el-button size="small" style="margin-bottom: 8px" @click="loadFlowExecutionLogs">刷新</el-button>
         <el-empty
@@ -850,7 +801,22 @@
           </el-table-column>
           <el-table-column prop="workflowId" label="workflowId" min-width="160" show-overflow-tooltip />
           <el-table-column prop="orchestrationRunId" label="编排 run" width="96" />
-          <el-table-column prop="resultSummary" label="摘要/错误" min-width="200" show-overflow-tooltip />
+          <el-table-column label="摘要/错误" min-width="200">
+            <template #default="{ row }">
+              <div v-if="row.resultSummary" class="result-md-list-cell">
+                <span class="result-md-list-text" :title="row.resultSummary">{{ row.resultSummary }}</span>
+                <el-button
+                  type="primary"
+                  link
+                  size="small"
+                  @click="openResultMarkdownPreview('执行记录 · 摘要/错误', row.resultSummary)"
+                >
+                  预览
+                </el-button>
+              </div>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
           <el-table-column prop="startedAt" label="开始" width="160" />
           <el-table-column prop="finishedAt" label="结束" width="160" />
         </el-table>
@@ -946,9 +912,6 @@ import {
   magPmReassignTask,
   magStartTask,
   magSubmitComplete,
-  magBeginVerifyTask,
-  magSubmitVerifyDecision,
-  magListVerifications,
   magGetRequirementDoc,
   magSaveRequirementDoc,
   magListRequirementPool,
@@ -1016,18 +979,19 @@ const orchestrationRuns = ref([])
 const workOutputs = ref([])
 const workOutputDetailDlg = ref(false)
 const workOutputDetail = ref(null)
+const magResultMdPreviewDlg = ref(false)
+const magResultMdPreviewTitle = ref('Markdown 预览')
+const magResultMdPreviewMarkdown = ref('')
 
-const dispatchableAgents = computed(() => (agents.value || []).filter((a) => a.roleType !== 'VERIFY'))
+const dispatchableAgents = computed(() => agents.value || [])
 
-const verifyAgentOptions = computed(() => (agents.value || []).filter((a) => a.roleType === 'VERIFY'))
-
-/** 与 el-steps 四步对齐：派工完成=0 已过；待开始/干活=1；申报核查=2；结项=3；DONE 时 active=4 表示全部完成 */
+/** 与 el-steps 四步对齐：派工=0；待开始/干活=1～2；申报/结项=3；DONE 时 active=4 表示全部完成 */
 const taskPipelineStepActive = computed(() => {
   const s = flowTask.value?.state
   if (!s) return 0
   if (s === 'DONE') return 4
-  if (s === 'PENDING_VERIFY' || s === 'VERIFYING') return 2
-  if (s === 'PENDING' || s === 'IN_PROGRESS' || s === 'BLOCKED') return 1
+  if (s === 'IN_PROGRESS' || s === 'BLOCKED') return 2
+  if (s === 'PENDING') return 1
   return 0
 })
 
@@ -1037,7 +1001,6 @@ const agentRoleOptions = [
   { value: 'BACKEND', label: '后端（BACKEND）' },
   { value: 'FRONTEND', label: '前端（FRONTEND）' },
   { value: 'TEST', label: '测试（TEST）' },
-  { value: 'VERIFY', label: '核查（VERIFY）' },
 ]
 
 const POOL_STATE_LABELS = {
@@ -1065,7 +1028,6 @@ const reassignForm = ref({ assigneeAgentId: null })
 const flowDlg = ref(false)
 const flowTask = ref(null)
 const flowEvents = ref([])
-const flowVerifications = ref([])
 const flowExecutionLogs = ref([])
 const flowTab = ref('chart')
 const mmdChainEl = ref(null)
@@ -1079,9 +1041,6 @@ const FLOW_EVENT_LABELS = {
   TASK_SUBMIT_COMPLETE: '申报完成',
   TASK_BLOCKED: '阻塞',
   TASK_REQUEST_NEXT: '要活（申领下一项）',
-  TASK_VERIFYING_STARTED: '进入核查中',
-  TASK_VERIFICATION_PASS: '核查通过（结项）',
-  TASK_VERIFICATION_FAIL: '核查不通过（退回执行）',
 }
 
 const relDlg = ref(false)
@@ -1120,6 +1079,20 @@ const workOutputDetailRenderedHtml = computed(() => {
   }
   return ''
 })
+
+const magResultMdPreviewRenderedHtml = computed(() => {
+  const s = magResultMdPreviewMarkdown.value
+  if (s == null || !String(s).trim()) {
+    return renderMarkdownToSafeHtml('（无内容）')
+  }
+  return renderMarkdownToSafeHtml(s)
+})
+
+function openResultMarkdownPreview(title, markdown) {
+  magResultMdPreviewTitle.value = title || 'Markdown 预览'
+  magResultMdPreviewMarkdown.value = markdown == null ? '' : String(markdown)
+  magResultMdPreviewDlg.value = true
+}
 
 const poolPayloadDlg = ref(false)
 const poolPayloadViewRow = ref(null)
@@ -1207,16 +1180,6 @@ function openPoolPayloadMarkdown(row) {
   poolPayloadTab.value = 'preview'
   poolPayloadDlg.value = true
 }
-
-const verifyDlg = ref(false)
-const verifyTask = ref(null)
-const verifyForm = ref({
-  verifierAgentId: null,
-  result: 'PASS',
-  rationale: '',
-  evidenceSummary: '',
-  rowVersion: null,
-})
 
 const reqNextDlg = ref(false)
 const reqNextTask = ref(null)
@@ -1616,8 +1579,6 @@ function taskPhaseLabel(state) {
     PENDING: '待开始',
     IN_PROGRESS: '执行中',
     BLOCKED: '阻塞',
-    PENDING_VERIFY: '待核查',
-    VERIFYING: '核查中',
     DONE: '已完成',
   }
   return m[state] || state || '—'
@@ -1627,7 +1588,6 @@ function taskPhaseTagType(state) {
   if (state === 'DONE') return 'success'
   if (state === 'BLOCKED') return 'danger'
   if (state === 'IN_PROGRESS') return 'warning'
-  if (state === 'PENDING_VERIFY' || state === 'VERIFYING') return 'primary'
   return 'info'
 }
 
@@ -1691,9 +1651,6 @@ function pipelineHighlightNodeId(state) {
       return 'S2'
     case 'BLOCKED':
       return 'SB'
-    case 'PENDING_VERIFY':
-    case 'VERIFYING':
-      return 'S3'
     case 'DONE':
       return 'S4'
     default:
@@ -1709,12 +1666,10 @@ function buildMainPipelineMermaid(state) {
     '  S1["待执行方开始<br/>PENDING"]',
     '  S2["执行方干活<br/>IN_PROGRESS"]',
     '  SB["阻塞<br/>BLOCKED"]',
-    '  S3["待核查/核查中<br/>PENDING_VERIFY / VERIFYING"]',
     '  S4["已完成<br/>DONE"]',
     '  S0 --> S1',
     '  S1 --> S2',
-    '  S2 --> S3',
-    '  S3 --> S4',
+    '  S2 --> S4',
     '  S2 -. 阻塞 .-> SB',
     '  classDef cur fill:#fff3c4,stroke:#f57c00,stroke-width:3px,color:#333',
     `  class ${cur} cur`,
@@ -1747,9 +1702,6 @@ async function onFlowTabChange(name) {
     await nextTick()
     await renderFlowMermaid()
   }
-  if (name === 'verifications' && flowTask.value) {
-    await loadFlowVerifications()
-  }
   if (name === 'executionLogs' && flowTask.value) {
     await loadFlowExecutionLogs()
   }
@@ -1757,17 +1709,6 @@ async function onFlowTabChange(name) {
 
 function onFlowDlgOpened() {
   onFlowTabChange(flowTab.value)
-}
-
-async function loadFlowVerifications() {
-  if (!flowTask.value) return
-  try {
-    const res = await magListVerifications(flowTask.value.id)
-    flowVerifications.value = res.data || []
-  } catch {
-    flowVerifications.value = []
-    ElMessage.warning('加载核查记录失败')
-  }
 }
 
 async function loadFlowExecutionLogs() {
@@ -1785,7 +1726,6 @@ async function openTaskFlow(row) {
   flowTask.value = row
   flowTab.value = 'chart'
   flowEvents.value = []
-  flowVerifications.value = []
   flowExecutionLogs.value = []
   flowDlg.value = true
   try {
@@ -1799,71 +1739,6 @@ async function openTaskFlow(row) {
   await renderFlowMermaid()
 }
 
-function openVerify(row) {
-  verifyTask.value = row
-  const vAgents = verifyAgentOptions.value
-  verifyForm.value = {
-    verifierAgentId: vAgents.length ? vAgents[0].id : null,
-    result: 'PASS',
-    rationale: '',
-    evidenceSummary: '',
-    rowVersion: row.rowVersion,
-  }
-  verifyDlg.value = true
-}
-
-async function beginVerifyOnly(row) {
-  try {
-    await magBeginVerifyTask(row.id)
-    ElMessage.success('已进入核查中')
-    loadTasks()
-  } catch {
-    ElMessage.error('进入核查中失败（可能已非待核查状态）')
-  }
-}
-
-async function saveVerifyDecision() {
-  if (!verifyTask.value) return
-  if (verifyForm.value.verifierAgentId == null) {
-    ElMessage.warning('请选择核查 Agent（VERIFY 角色）')
-    return
-  }
-  if (!String(verifyForm.value.rationale || '').trim()) {
-    ElMessage.warning('请填写依据说明')
-    return
-  }
-  const tid = verifyTask.value.id
-  try {
-    await magSubmitVerifyDecision(tid, {
-      result: verifyForm.value.result,
-      verifierAgentId: verifyForm.value.verifierAgentId,
-      rationale: verifyForm.value.rationale.trim(),
-      evidenceSummary: verifyForm.value.evidenceSummary?.trim() || undefined,
-      rowVersion: verifyForm.value.rowVersion,
-    })
-    ElMessage.success('已提交核查裁定')
-    verifyDlg.value = false
-    await loadTasks()
-    if (flowDlg.value && flowTask.value && flowTask.value.id === tid) {
-      const updated = tasks.value.find((t) => t.id === tid)
-      if (updated) {
-        flowTask.value = updated
-      }
-      try {
-        const res = await magListTaskFlowEvents(tid)
-        flowEvents.value = res.data || []
-      } catch {
-        /* ignore */
-      }
-      await loadFlowVerifications()
-      await nextTick()
-      await renderFlowMermaid()
-    }
-  } catch {
-    ElMessage.error('提交失败（检查乐观锁 rowVersion 或任务状态）')
-  }
-}
-
 async function startTask(row) {
   await magStartTask(row.id)
   ElMessage.success('已开始')
@@ -1872,7 +1747,7 @@ async function startTask(row) {
 
 async function submitDone(row) {
   await magSubmitComplete(row.id, { rowVersion: row.rowVersion })
-  ElMessage.success('已申报')
+  ElMessage.success('已申报完成')
   loadTasks()
 }
 
@@ -2612,6 +2487,27 @@ async function runAgentRow(row) {
   font-size: 12px;
   color: var(--el-color-warning);
   margin: 8px;
+}
+
+/* 列表内纯文本 +「预览」：不在表格里渲染 Markdown */
+.result-md-list-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.result-md-list-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.mag-result-md-dialog-body {
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* Markdown 预览（v-html + DOMPurify） */

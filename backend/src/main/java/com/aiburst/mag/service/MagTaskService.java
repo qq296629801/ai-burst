@@ -10,12 +10,10 @@ import com.aiburst.mag.dto.MagTaskCreateRequest;
 import com.aiburst.mag.dto.MagTaskDispatchRequest;
 import com.aiburst.mag.dto.MagTaskPmReassignRequest;
 import com.aiburst.mag.dto.MagTaskRequestNextRequest;
-import com.aiburst.mag.dto.MagTaskVerifyDecisionRequest;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.entity.MagMessage;
 import com.aiburst.mag.entity.MagModule;
 import com.aiburst.mag.entity.MagTask;
-import com.aiburst.mag.entity.MagTaskVerification;
 import com.aiburst.mag.entity.MagThread;
 import com.aiburst.mag.mapper.MagAgentImprovementLogMapper;
 import com.aiburst.mag.mapper.MagAgentMapper;
@@ -26,12 +24,10 @@ import com.aiburst.mag.entity.MagTaskExecutionLog;
 import com.aiburst.mag.mapper.MagTaskExecutionLogMapper;
 import com.aiburst.mag.mapper.MagTaskFlowEventMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
-import com.aiburst.mag.mapper.MagTaskVerificationMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
 import com.aiburst.mag.config.MagTaskAutomationProperties;
 import com.aiburst.mag.event.MagTaskAutoOrchestrateEvent;
-import com.aiburst.mag.event.MagTaskPendingVerifyEvent;
-import com.aiburst.mag.event.MagTaskVerifiedPassEvent;
+import com.aiburst.mag.event.MagTaskMarkedDoneEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +43,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -59,7 +54,6 @@ public class MagTaskService {
     private static final int BLOCK_REASON_MAX = 512;
 
     private final MagTaskMapper taskMapper;
-    private final MagTaskVerificationMapper verificationMapper;
     private final MagAccessHelper accessHelper;
     private final MagThreadMapper threadMapper;
     private final MagMessageMapper messageMapper;
@@ -110,7 +104,7 @@ public class MagTaskService {
     }
 
     /**
-     * 项目经理派工：创建任务并必须指定执行 Agent（产品 §4.2）；核查 Agent 不可作为交付执行人。
+     * 项目经理派工：创建任务并必须指定执行 Agent（产品 §4.2）。
      */
     @Transactional
     public Map<String, Object> dispatch(Long projectId, MagTaskDispatchRequest req, Long userId) {
@@ -308,8 +302,8 @@ public class MagTaskService {
             throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID);
         }
         int expected = req.getRowVersion() != null ? req.getRowVersion() : task.getRowVersion();
-        String wfId = "stub-" + taskId + "-" + UUID.randomUUID();
-        int updated = taskMapper.updateStateWithVersion(taskId, MagConstants.TASK_PENDING_VERIFY, expected, wfId);
+        int updated =
+                taskMapper.updateStateWithVersion(taskId, MagConstants.TASK_DONE, expected, null);
         if (updated == 0) {
             throw new MagBusinessException(MagResultCode.MAG_ROW_VERSION_CONFLICT);
         }
@@ -319,17 +313,15 @@ public class MagTaskService {
                 MagTaskFlowEventType.TASK_SUBMIT_COMPLETE,
                 "USER",
                 null,
-                "申报完成（进行中 → 待核查）",
-                Map.of("temporalWorkflowId", wfId));
-        eventPublisher.publishEvent(new MagTaskPendingVerifyEvent(taskId, task.getProjectId(), userId));
+                "申报完成（进行中 → 已完成）",
+                Map.of());
+        eventPublisher.publishEvent(new MagTaskMarkedDoneEvent(task.getProjectId(), taskId, userId));
     }
 
     /**
      * 在关联任务的 Agent 编排 Activity 已成功结束且事务已提交后调用：
      * 若任务仍为「进行中」、执行 Agent 与编排一致，且存在产出物（本次编排时间窗内在 {@code mag_agent_improvement_log} 至少一条），
      * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。仅凭模型长文本回复不算产出物。
-     *
-     * <p>VERIFY Agent 的核查编排虽然带 taskId，但任务处于核查态且 assignee 非 VERIFY，故不会满足条件。
      */
     public void tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration(
             long taskId,
@@ -385,123 +377,6 @@ public class MagTaskService {
     private boolean hasImprovementLogDeliverableAfterOrchestration(
             long projectId, long agentId, LocalDateTime sinceInclusive) {
         return improvementLogMapper.countByProjectAgentCreatedAtSince(projectId, agentId, sinceInclusive) > 0;
-    }
-
-    /**
-     * 待核查 → 核查中。供自动化或人工在触发 VERIFY 编排前调用。
-     */
-    @Transactional
-    public void beginVerify(Long taskId, Long actingUserId) {
-        MagTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(task.getProjectId(), actingUserId);
-        if (!MagConstants.TASK_PENDING_VERIFY.equals(task.getState())) {
-            throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID, "仅待核查状态可进入核查中");
-        }
-        int expected = task.getRowVersion() != null ? task.getRowVersion() : 0;
-        String wf = task.getTemporalWorkflowId();
-        int n = taskMapper.updateStateWithVersion(taskId, MagConstants.TASK_VERIFYING, expected, wf);
-        if (n == 0) {
-            throw new MagBusinessException(MagResultCode.MAG_ROW_VERSION_CONFLICT);
-        }
-        flowRecorder.record(
-                task.getProjectId(),
-                taskId,
-                MagTaskFlowEventType.TASK_VERIFYING_STARTED,
-                "USER",
-                null,
-                "进入核查中（待核查 → 核查中）",
-                Map.of());
-    }
-
-    /**
-     * 记录核查结论并推进状态：PASS→DONE，FAIL→IN_PROGRESS。须在 {@code PENDING_VERIFY} 或 {@code VERIFYING} 下调用。
-     *
-     * @param verifierActedViaAgentScopeTool true 表示由 VERIFY Agent 工具提交（流程事件行为体为 AGENT）
-     */
-    @Transactional
-    public void submitVerificationDecision(
-            Long taskId,
-            MagTaskVerifyDecisionRequest req,
-            Long actingUserId,
-            boolean verifierActedViaAgentScopeTool) {
-        MagTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(task.getProjectId(), actingUserId);
-        String state = task.getState();
-        if (!MagConstants.TASK_PENDING_VERIFY.equals(state) && !MagConstants.TASK_VERIFYING.equals(state)) {
-            throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID, "仅待核查或核查中可提交核查结论");
-        }
-        if (req.getVerifierAgentId() == null) {
-            throw new IllegalArgumentException("verifierAgentId required");
-        }
-        MagAgent verifier = agentMapper.selectById(req.getVerifierAgentId());
-        requireVerifierAgentInProject(verifier, task.getProjectId());
-
-        String result = req.getResult() != null ? req.getResult().trim().toUpperCase() : "";
-        if (!"PASS".equals(result) && !"FAIL".equals(result)) {
-            throw new IllegalArgumentException("result must be PASS or FAIL");
-        }
-        if (!StringUtils.hasText(req.getRationale())) {
-            throw new IllegalArgumentException("rationale required");
-        }
-
-        MagTaskVerification row = new MagTaskVerification();
-        row.setTaskId(taskId);
-        row.setResult(result);
-        row.setVerifierAgentId(req.getVerifierAgentId());
-        row.setRationale(req.getRationale().trim());
-        row.setEvidenceSummary(
-                StringUtils.hasText(req.getEvidenceSummary()) ? req.getEvidenceSummary().trim() : null);
-        row.setSearchTraceJson(null);
-        verificationMapper.insert(row);
-
-        int expected = req.getRowVersion() != null ? req.getRowVersion() : task.getRowVersion();
-        String newState = "PASS".equals(result) ? MagConstants.TASK_DONE : MagConstants.TASK_IN_PROGRESS;
-        int updated = taskMapper.updateStateWithVersion(taskId, newState, expected, null);
-        if (updated == 0) {
-            throw new MagBusinessException(MagResultCode.MAG_ROW_VERSION_CONFLICT);
-        }
-
-        String actorType = verifierActedViaAgentScopeTool ? "AGENT" : "USER";
-        Long actorAgentId = verifierActedViaAgentScopeTool ? req.getVerifierAgentId() : null;
-        String evt =
-                "PASS".equals(result)
-                        ? MagTaskFlowEventType.TASK_VERIFICATION_PASS
-                        : MagTaskFlowEventType.TASK_VERIFICATION_FAIL;
-        String summary =
-                "PASS".equals(result)
-                        ? "核查通过 → 已完成"
-                        : "核查不通过 → 退回执行中";
-        Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("verificationId", row.getId());
-        detail.put("verifierAgentId", req.getVerifierAgentId());
-        detail.put("result", result);
-        if (!verifierActedViaAgentScopeTool) {
-            detail.put("submittedByUserId", actingUserId);
-        }
-        flowRecorder.record(task.getProjectId(), taskId, evt, actorType, actorAgentId, summary, detail);
-
-        if ("PASS".equals(result)) {
-            eventPublisher.publishEvent(
-                    new MagTaskVerifiedPassEvent(task.getProjectId(), taskId, actingUserId));
-        }
-    }
-
-    private void requireVerifierAgentInProject(MagAgent agent, Long projectId) {
-        if (agent == null || !projectId.equals(agent.getProjectId())) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND, "核查 Agent 不存在或不属于本项目");
-        }
-        if (!"VERIFY".equals(agent.getRoleType())) {
-            throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID, "核查结论须由 VERIFY 角色 Agent 出具");
-        }
-        if (agent.getStatus() != null && agent.getStatus() == 0) {
-            throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID, "核查 Agent 已停用");
-        }
     }
 
     @Transactional
@@ -606,9 +481,6 @@ public class MagTaskService {
         if (a == null || !projectId.equals(a.getProjectId())) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
         }
-        if ("VERIFY".equals(a.getRoleType())) {
-            throw new MagBusinessException(MagResultCode.MAG_VERIFY_ASSIGNEE_CONFLICT);
-        }
     }
 
     private void postCoordAssignMessage(Long projectId, Long taskId, Long assigneeAgentId, String title) {
@@ -641,15 +513,6 @@ public class MagTaskService {
             t = t.substring(0, maxRest - 1) + "…";
         }
         return prefix + t;
-    }
-
-    public List<Map<String, Object>> listVerifications(Long taskId, Long userId) {
-        MagTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(task.getProjectId(), userId);
-        return verificationMapper.selectByTaskId(taskId).stream().map(this::verRow).collect(Collectors.toList());
     }
 
     public List<Map<String, Object>> listTaskFlowEvents(Long taskId, Long userId) {
@@ -721,19 +584,6 @@ public class MagTaskService {
         m.put("rowVersion", t.getRowVersion());
         m.put("createdAt", t.getCreatedAt());
         m.put("updatedAt", t.getUpdatedAt());
-        return m;
-    }
-
-    private Map<String, Object> verRow(MagTaskVerification v) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("id", v.getId());
-        m.put("taskId", v.getTaskId());
-        m.put("result", v.getResult());
-        m.put("verifierAgentId", v.getVerifierAgentId());
-        m.put("rationale", v.getRationale());
-        m.put("evidenceSummary", v.getEvidenceSummary());
-        m.put("searchTraceJson", v.getSearchTraceJson());
-        m.put("createdAt", v.getCreatedAt());
         return m;
     }
 }

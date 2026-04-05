@@ -30,7 +30,7 @@
 | 权限码 | 技术方案 §10 + V5：`mag:sched:manage`、`mag:kb:blueprint:import`、`mag:audit:fetch:view` |
 | WebSocket | `/ws/mag?token=`；`SUBSCRIBE` / `UNSUBSCRIBE` / `PING` |
 
-**测试数据**：用户 A（OWNER + 全量 mag 权限）、用户 B（VIEWER 或缺关键权限）；项目 P1、P2；六类 `role_type`：PM、PRODUCT、BACKEND、FRONTEND、TEST、VERIFY。
+**测试数据**：用户 A（OWNER + 全量 mag 权限）、用户 B（VIEWER 或缺关键权限）；项目 P1、P2；五类 `role_type`：PM、PRODUCT、BACKEND、FRONTEND、TEST。
 
 ---
 
@@ -50,7 +50,7 @@
 | REQ-PRD-G08 | §1 目标⑧ | 发版归档；对比过程/协调/停滞/排障沉淀；项目隔离；引用归档经验与模块 | TC-MAG-G08 | P1 | API：releases、kb、import-blueprint；隔离用例 TC-MAG-ISO |
 | REQ-PRD-G09 | §1 目标⑨ | 组织知识库：归档优质回流 + 人工录入；产品/组织检索 | TC-MAG-G09 | P1 | API：kb entries；CFG：`quality_flag` 回流 |
 | REQ-PRD-G10 | §1 目标⑩ | 系统用户处理待拍板；待办与/或需求池可达 | TC-MAG-G10 | P0 | API：`GET /todos` + 需求池；UI：TodoList + 工作台池 |
-| REQ-PRD-G11 | §1 目标⑪ | 申报完成≠完成；核查 Agent 检索交叉验证；以核查结论为准 | TC-MAG-G11 | P0 | API：submit-complete、verifications；禁止直改 DONE |
+| REQ-PRD-G11 | §1 目标⑪ | 申报完成后任务进入已完成（DONE）；流程与留痕可审计 | TC-MAG-G11 | P0 | API：`submit-complete`→`DONE`；无独立核查 API |
 
 ### 2.2 产品 §2.1「本期包含」表格 — 逐行（16 行全列）
 
@@ -63,7 +63,7 @@
 | REQ-PRD-M05 | 协作沟通可观测：线程消息可见；权限脱敏；按项目/Agent/时间筛选 | TC-MAG-M05 | P1 | API threads/messages；筛选 query GAP 则记技术方案 §17 |
 | REQ-PRD-M06 | 协调链：PM 协调主 Agent；主协调子 Agent | TC-MAG-M06 | P2 | E2E/GAP；消息 kind 可审计 |
 | REQ-PRD-M07 | 任务与申领：要活；主向 PM 缺口；PM 按模块派工 | TC-MAG-M07 | P1 | API request-next、module、task assignee |
-| REQ-PRD-M08 | 任务完成核查：申报后独立核验；KB+外部实践；非自述即完成 | TC-MAG-M08 | P0 | Workflow+verification 表；与 TC-MAG-G11 同簇 |
+| REQ-PRD-M08 | 任务结项：申报完成直落已完成 | TC-MAG-M08 | P0 | 与 TC-MAG-G11 同簇；无 `mag_task_verification` |
 | REQ-PRD-M09 | 改进记录：变更/调优/反馈/版本可追溯 | TC-MAG-M09 | P1 | API improvements |
 | REQ-PRD-M10 | 定时任务：计划触发检查/同步/汇报/周期 Agent 动作 | TC-MAG-M10 | P1 | API scheduled-jobs；执行留痕 GAP |
 | REQ-PRD-M11 | 需求文档中心：编辑、版本、评审状态、变更影响入口 | TC-MAG-M11 | P1 | API doc/revisions/diff；评审状态字段 GAP |
@@ -81,7 +81,7 @@
 | REQ-PRD-OUT02 | §2.2-2 | 自动代码合并生产不在本期 | TC-MAG-OUT02 | OUT |
 | REQ-PRD-OUT03 | §2.2-3 | 跨租户协作另立需求 | TC-MAG-OUT03 | OUT |
 
-### 2.4 产品 §3「六类 Agent」— 角色与职责
+### 2.4 产品 §3「五类 Agent」— 角色与职责
 
 | REQ-ID | 类型 | 需求摘要 | 用例 ID | 优先级 | 验证方式 |
 |--------|------|----------|---------|--------|----------|
@@ -89,9 +89,7 @@
 | REQ-PRD-R02 | PRODUCT | 需求结构、澄清、变更范围；KB→成熟产品→比选→窄口径池 | TC-MAG-R02 | P1 | 池 payload 与文档 API；E2E GAP |
 | REQ-PRD-R03 | BACKEND | 子 Agent 分担 | TC-MAG-R03 | P1 | parent_agent_id + 任务绑定 |
 | REQ-PRD-R04 | FRONTEND | 子 Agent 分担 | TC-MAG-R04 | P1 | 同 R03 |
-| REQ-PRD-R05 | TEST | 测试设计与执行；申报完成仍须核查 | TC-MAG-R05 | P0 | TEST 角色任务走 submit-complete→verification |
-| REQ-PRD-R06 | VERIFY | 独立核查；通过才 DONE；检索交叉验证；记录落库 | TC-MAG-R06 | P0 | verifier≠assignee；verifications 仅追加 |
-| REQ-PRD-R07 | §3 段末 | TEST 与 VERIFY 职责不互相替代 | TC-MAG-R07 | P1 | 同任务核查链路与角色分工审查 |
+| REQ-PRD-R05 | TEST | 测试设计与执行；申报完成与其他职能一致直落 DONE | TC-MAG-R05 | P1 | `submit-complete`→`DONE` |
 
 ### 2.5 产品 §4.1～§4.5
 
@@ -101,22 +99,14 @@
 | REQ-PRD-4102 | §4.1 | 子职责 + 「要活」 | TC-MAG-4102 | P1 |
 | REQ-PRD-4201 | §4.2 | 主向 PM 请求任务/优先级 | TC-MAG-4201 | P2 |
 | REQ-PRD-4202 | §4.2 | PM 依据进度/模块/依赖派工 | TC-MAG-4202 | P2 |
-| REQ-PRD-4203 | §4.2 | 界面可见待派发/进行中/阻塞原因 | TC-MAG-4203 | P1 | UI+API 任务列表 state、block_reason |
-| REQ-PRD-4301 | §4.3 | 无法执行须主动协作消息+原因（结构化或自然语言） | TC-MAG-4301 | P1 | block API + 消息 JSON |
-| REQ-PRD-4302 | §4.3 | 每次 PM 协助写入协助记录 | TC-MAG-4302 | P1 | pm-assist CRUD |
-| REQ-PRD-4401 | §4.4 | 请求派工/阻塞/澄清/联调等进时间线或线程 | TC-MAG-4401 | P1 | 消息列表含多类 content |
-| REQ-PRD-4402 | §4.4 | 用户可介入 @Agent 备注（权限可控） | TC-MAG-4402 | P2 | USER 消息；@ 解析 GAP |
-| REQ-PRD-4501 | §4.5 原则 | 任意职能申报完成不得直落 DONE | TC-MAG-4501 | P0 |
-| REQ-PRD-4502 | §4.5 原则 | 核查对照需求/验收/产出物 | TC-MAG-4502 | E2E/GAP |
-| REQ-PRD-4503 | §4.5 原则 | 充分验证：检索 KB/成熟产品/公开方案 | TC-MAG-4503 | E2E/GAP | verification search_trace_json |
-| REQ-PRD-4504 | §4.5 结论 | 通过→DONE；不通过→进行中+理由+补做项 | TC-MAG-4504 | P0 |
-| REQ-PRD-4505 | §4.5 记录 | 每次判定持久化；不覆盖历史 | TC-MAG-4505 | P0 |
-| REQ-PRD-4506 | §4.5 记录 | 通过记录字段集（时间、核查实例、依据、检索摘要等） | TC-MAG-4506 | P1 | DB 列与 API 对照 |
-| REQ-PRD-4507 | §4.5 记录 | 不通过记录字段集 | TC-MAG-4507 | P1 |
-| REQ-PRD-4508 | §4.5 UI | 任务详情/核查入口看历史；按项目任务时间结论筛选 | TC-MAG-4508 | P2 | 筛选 query GAP |
-| REQ-PRD-4509 | §4.5 关系 | 测试 Agent 任务同样核查 | TC-MAG-4509 | P0 |
-| REQ-PRD-4510 | §4.5 关系 | 产品、PM Agent 任务同样核查 | TC-MAG-4510 | P0 |
-| REQ-PRD-4511 | §4.5 配置 | 至少 1 个 VERIFY 实例 | TC-MAG-4511 | P1 |
+| REQ-PRD-4203 | §4.2 | 界面可见待派发/进行中/阻塞原因（UI+API：`state`、`block_reason`） | TC-MAG-4203 | P1 |
+| REQ-PRD-4301 | §4.3 | 无法执行须主动协作消息+原因（`block` API + 消息 JSON） | TC-MAG-4301 | P1 |
+| REQ-PRD-4302 | §4.3 | 每次 PM 协助写入协助记录（`pm-assist`） | TC-MAG-4302 | P1 |
+| REQ-PRD-4401 | §4.4 | 请求派工/阻塞/澄清/联调等进时间线或线程 | TC-MAG-4401 | P1 |
+| REQ-PRD-4402 | §4.4 | 用户可介入 @Agent 备注（USER 消息；@ 解析可为 GAP） | TC-MAG-4402 | P2 |
+| REQ-PRD-4501 | §4.5 | 申报完成：`IN_PROGRESS`→`DONE` | TC-MAG-4501 | P0 |
+| REQ-PRD-4502 | §4.5 | 人工 / API / 系统自动申报同一口径（`MagTaskAutomationProperties` 等） | TC-MAG-4502 | P1 |
+| REQ-PRD-4503 | §4.5 | 完成后流程事件与编排/改进留痕可审计 | TC-MAG-4503 | P1 |
 
 ### 2.6 产品 §5.1 项目入口与工作台
 
@@ -125,18 +115,16 @@
 | REQ-PRD-5101 | 列表：名称、状态、Agent 数、最近活动、需求版本 | TC-MAG-5101 | P0 |
 | REQ-PRD-5102 | 详情：成员、Agent（角色主从当前任务心跳可选）、沟通、任务、需求、改进摘要 | TC-MAG-5102 | P1 |
 | REQ-PRD-5103 | 跳转本项目待办 | TC-MAG-5103 | P2 |
-| REQ-PRD-5104 | 无「仅拍板」成员档位；拍板=RBAC+成员 | TC-MAG-5104 | P0 | SEC：无独立角色枚举 |
+| REQ-PRD-5104 | 无「仅拍板」成员档位；拍板=RBAC+成员（SEC：无独立角色枚举） | TC-MAG-5104 | P0 |
 
 ### 2.7 产品 §5.2 任务与模块
 
 | REQ-ID | 需求摘要 | 用例 ID | 优先级 |
 |--------|----------|---------|--------|
-| REQ-PRD-5201 | 模块树/标签与需求双向关联 | TC-MAG-5201 | P2 | task.moduleId、池 anchor GAP |
-| REQ-PRD-5202 | 状态含：待派发、进行中、待核查、核查中、已完成、阻塞 | TC-MAG-5202 | P0 | 常量与库表 state 对照 |
-| REQ-PRD-5203 | 已完成仅核查通过后 | TC-MAG-5203 | P0 |
-| REQ-PRD-5204 | 核查不通过→进行中+意见+历次记录 | TC-MAG-5204 | P0 |
-| REQ-PRD-5205 | 阻塞记录原因与责任人 Agent | TC-MAG-5205 | P1 | block_reason、blocked_by_agent_id |
-| REQ-PRD-5206 | 不得弱化非核查不得 DONE | TC-MAG-5206 | P0 | 负面：无绕过 API |
+| REQ-PRD-5201 | 模块树/标签与需求双向关联（`task.moduleId`、池 `anchor` 等可为 GAP） | TC-MAG-5201 | P2 |
+| REQ-PRD-5202 | 状态含：待派发、进行中、已完成、阻塞 | TC-MAG-5202 | P0 |
+| REQ-PRD-5203 | 申报完成进入已完成（`submit-complete`） | TC-MAG-5203 | P0 |
+| REQ-PRD-5204 | 阻塞记录原因与责任人 Agent（`block_reason`、`blocked_by_agent_id`） | TC-MAG-5204 | P1 |
 
 ### 2.8 产品 §5.3 改进记录
 
@@ -317,11 +305,11 @@
 
 | 用例 ID | 步骤摘要 | 期望 |
 |---------|----------|------|
-| TC-MAG-ACC-01 | 创建项目；创建 PM/BACKEND/FRONTEND/TEST/VERIFY/PRODUCT 及子 Agent | 列表 `roleType`、`parentAgentId` 正确 |
+| TC-MAG-ACC-01 | 创建项目；创建 PM/BACKEND/FRONTEND/TEST/PRODUCT 及子 Agent | 列表 `roleType`、`parentAgentId` 正确 |
 | TC-MAG-ACC-02 | 建线程；AGENT/USER 发消息；`GET messages` | 时间线可见；非成员不可读 |
 | TC-MAG-ACC-03 | `request-next` | 协调线程含 `REQUEST_NEXT` JSON |
-| TC-MAG-ACC-04 | start → submit-complete | 进入 `PENDING_VERIFY`，非直接 `DONE` |
-| TC-MAG-ACC-05 | 核查通过与拒绝（Workflow/测试桩） | `DONE` / `IN_PROGRESS`；`verifications` 多条 |
+| TC-MAG-ACC-04 | start → submit-complete | 任务 `DONE`；`temporal_workflow_id` 按实现清空或保留以代码为准 |
+| TC-MAG-ACC-05 | 任务流程事件 / 改进日志可查 | 申报完成写入可查询记录（无核查子表） |
 | TC-MAG-ACC-06 | improvements GET/POST | 按 Agent、项目过滤 |
 | TC-MAG-ACC-07 | scheduled-jobs PUT/GET；执行痕迹 | 配置成功；执行 GAP 备注 |
 | TC-MAG-ACC-08 | 保存需求；revisions；diff；analyze | 版本递增；SYSTEM 消息；traceId |
@@ -349,7 +337,7 @@
 | 用例 ID | 说明 |
 |---------|------|
 | TC-MAG-SEC-01～06 | VIEWER 写任务；无 pool:decide 拍板；无 kb:manage；无 sched；无 blueprint；无 audit |
-| TC-MAG-SAFE-01～04 | SSRF；审计；verifier≠assignee；VERIFY 不可为唯一执行人 |
+| TC-MAG-SAFE-01～03 | SSRF；审计；任务状态迁移须经公开 API |
 
 ### 3.5 WebSocket（§8）
 
@@ -367,7 +355,6 @@ TC-MAG-UI-01～04：项目列表、工作台全 Tab、知识库、大屏 WS。
 SELECT * FROM mag_project_member WHERE project_id = ?;
 SELECT id, state, block_reason, blocked_by_agent_id, assignee_agent_id FROM mag_task WHERE project_id = ?;
 SELECT id, state, revision_id, anchor_json, payload_json FROM mag_requirement_pool_item WHERE project_id = ?;
-SELECT * FROM mag_task_verification WHERE task_id = ? ORDER BY id;
 SELECT id, source, archive_id, title FROM mag_kb_entry;
 SELECT id, version_label, quality_flag, snapshot_json FROM mag_release_archive WHERE project_id = ?;
 ```
@@ -386,7 +373,8 @@ SELECT id, version_label, quality_flag, snapshot_json FROM mag_release_archive W
 |------|------|------|
 | v1.0 | 2026-04-04 | 初版 |
 | v2.0 | 2026-04-04 | **需求全文覆盖**：§1～§11（含 §10 关联文档走查）、§2.1 十六行、§2.2 边界、附录 A 追溯矩阵 + GAP/OUT 符号 |
+| v2.1 | 2026-04-05 | 去掉核查 Agent / `mag_task_verification` / 待核查类状态；用例与产品「申报即 DONE」对齐 |
 
 ---
 
-*编排类（PM/产品 Agent 自动升级、核查 LLM 步、定时 Job 真实执行、多方案比选自动化）以 **E2E** 或 **GAP** 标注；接口与数据模型以 **API+DB** 验证为准。*
+*编排类（PM/产品 Agent 自动升级、定时 Job 真实执行、多方案比选自动化）以 **E2E** 或 **GAP** 标注；接口与数据模型以 **API+DB** 验证为准。*

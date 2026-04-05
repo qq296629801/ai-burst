@@ -7,7 +7,6 @@ import com.aiburst.mag.dto.MagTaskCreateRequest;
 import com.aiburst.mag.dto.MagTaskDispatchRequest;
 import com.aiburst.mag.dto.MagTaskPmReassignRequest;
 import com.aiburst.mag.dto.MagTaskRequestNextRequest;
-import com.aiburst.mag.dto.MagTaskVerifyDecisionRequest;
 import com.aiburst.mag.service.MagTaskService;
 import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -74,30 +73,13 @@ public class MagTaskController {
 
     @PostMapping("/tasks/{taskId}/submit-complete")
     @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "申报完成")
+    @Operation(summary = "申报完成：进行中 → 已完成（DONE）")
     public ApiResult<Void> submitComplete(@PathVariable Long taskId,
                                           @RequestBody(required = false) MagSubmitCompleteRequest req) {
         if (req == null) {
             req = new MagSubmitCompleteRequest();
         }
         taskService.submitComplete(taskId, req, SecurityUtils.currentUserId());
-        return ApiResult.ok();
-    }
-
-    @PostMapping("/tasks/{taskId}/begin-verify")
-    @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "待核查 → 核查中（未自动进入核查时可手工调用）")
-    public ApiResult<Void> beginVerify(@PathVariable Long taskId) {
-        taskService.beginVerify(taskId, SecurityUtils.currentUserId());
-        return ApiResult.ok();
-    }
-
-    @PostMapping("/tasks/{taskId}/verify-decision")
-    @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "提交核查结论：PASS→DONE，FAIL→IN_PROGRESS；写入 mag_task_verification")
-    public ApiResult<Void> verifyDecision(
-            @PathVariable Long taskId, @Valid @RequestBody MagTaskVerifyDecisionRequest req) {
-        taskService.submitVerificationDecision(taskId, req, SecurityUtils.currentUserId(), false);
         return ApiResult.ok();
     }
 
@@ -116,13 +98,6 @@ public class MagTaskController {
                                        @Valid @RequestBody MagTaskRequestNextRequest req) {
         taskService.requestNext(taskId, req, SecurityUtils.currentUserId());
         return ApiResult.ok();
-    }
-
-    @GetMapping("/tasks/{taskId}/verifications")
-    @PreAuthorize("hasAuthority('mag:project:list')")
-    @Operation(summary = "核查历史")
-    public ApiResult<List<Map<String, Object>>> verifications(@PathVariable Long taskId) {
-        return ApiResult.ok(taskService.listVerifications(taskId, SecurityUtils.currentUserId()));
     }
 
     @GetMapping("/tasks/{taskId}/flow-events")

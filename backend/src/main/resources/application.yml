@@ -53,12 +53,10 @@ aiburst:
     task:
       # 派工（及「待处理」态改派）后自动提交执行 Agent 编排，编排受理成功后将任务置为进行中
       auto-start-on-dispatch: true
-      # 申报完成进入待核查后，自动进入核查中并触发 VERIFY Agent 编排（无 VERIFY Agent 时仅告警，可人工核查）
-      auto-verify-on-submit-complete: true
-      # 关联任务的执行方 Agent 编排成功且本次时间窗内已有 mag_agent_improvement_log 时，自动申报完成（进入待核查）；关闭后仅可手动申报
+      # 关联任务的执行方 Agent 编排成功且本次时间窗内已有 mag_agent_improvement_log 时，自动申报完成（进入已完成）；关闭后仅可手动申报
       auto-submit-complete-on-orchestration-success: true
-      # 核查 PASS 结项后自动拉起项目经理 Agent 复盘全项目任务/模块；PM 可继续派工，链式重复直至阶段闭环
-      auto-pm-review-after-verified-pass: true
+      # 任务结项（DONE）后自动拉起项目经理 Agent 复盘全项目任务/模块
+      auto-pm-review-after-task-done: true
       # 当项目内全部任务均为已完成时写入告警（INFO），提示用户需再派发新任务
       notify-when-all-tasks-done: true
     ws:

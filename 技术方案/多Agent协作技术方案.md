@@ -45,7 +45,7 @@
 ```
                         ┌─────────────────────────────────────────┐
                         │              Temporal Server             │
-                        │   (Workflow: 核查等待 / 拍板等待 / 超时)   │
+                        │   (Workflow: 拍板等待 / 编排 / 超时)   │
                         └─────────────────┬───────────────────────┘
                                           │ gRPC
 ┌──────────┐   REST/WS    ┌───────────────▼──────────────┐    ┌──────────┐
@@ -76,9 +76,9 @@
 |----------|-----------|
 | §1 产品目标（各条） | §17.2；编排见 §5～§6 Temporal、§8 WS、§9 API |
 | §2.1 模块表（全行） | §17.3；库表 §4、API §9、前端 §11 |
-| §3 六类 Agent | §17.4；`mag_agent.role_type` + AgentScope 工具集 §5.2 |
+| §3 五类 Agent | §17.4；`mag_agent.role_type` + AgentScope 工具集 §5.2 |
 | §4.1～§4.4 主/子、协调、阻塞、可观测 | §17.5；`parent_agent_id`、`mag_thread`/`mag_message`、阻塞字段、筛选查询 §9 |
-| §4.5 核查 | `mag_task_verification` + **`TaskVerificationWorkflow`**；状态 §4.3.1 |
+| §4.5 任务结项 | 申报完成直落 `DONE`；状态 §4.3.1；无独立核查 Agent 表 |
 | §5.1～§5.8 项目管理 | §17.6；各子节见表内 |
 | §5.6.1 成熟产品检索 | Fetch Activity + `mag_external_fetch_audit`；池 `payload_json` 留痕 §17.7 |
 | §6.1～§6.3 需求文档与池 | §17.7；`mag_requirement_*`、池状态 §19.1 |
@@ -104,7 +104,7 @@
 
 | 表名 | 说明 |
 |------|------|
-| **mag_agent** | Agent 实例：`project_id`、`role_type`（PM/PRODUCT/BACKEND/FRONTEND/TEST/VERIFY）、`parent_agent_id`（主/子）、`name`、`llm_channel_id`（FK→`llm_channel.id`，可空则用项目默认）、`system_prompt_profile`、`extra_json`、`status` |
+| **mag_agent** | Agent 实例：`project_id`、`role_type`（PM/PRODUCT/BACKEND/FRONTEND/TEST）、`parent_agent_id`（主/子）、`name`、`llm_channel_id`（FK→`llm_channel.id`，可空则用项目默认）、`system_prompt_profile`、`extra_json`、`status` |
 | **mag_thread** | 会话线程：项目内、可选 `task_id`、标题 |
 | **mag_message** | 消息：`thread_id`、发送方类型（USER/AGENT/SYSTEM）、`sender_agent_id` 可空、`content`（TEXT/JSON）、`created_at` |
 
@@ -113,7 +113,7 @@
 | 表名 | 说明 |
 |------|------|
 | **mag_module** | 功能模块树：`project_id`、`parent_id`、`name`、`tag` |
-| **mag_task** | 任务：`module_id` 可空、`title`、`description`、`state`（见下表）、`assignee_agent_id`、`reporter_agent_id`、`requirement_ref`（文档节点 ID 或 JSON 指针）、`temporal_workflow_id`（核查或升级流程）、`block_reason`、`blocked_by_agent_id` 可空、`row_version` 乐观锁 |
+| **mag_task** | 任务：`module_id` 可空、`title`、`description`、`state`（见下表）、`assignee_agent_id`、`reporter_agent_id`、`requirement_ref`（文档节点 ID 或 JSON 指针）、`temporal_workflow_id`（可空）、`block_reason`、`blocked_by_agent_id` 可空、`row_version` 乐观锁 |
 | **mag_task_state_log** | 可选：状态迁移审计 |
 
 #### 4.3.1 任务状态枚举与产品 §5.2 对照
@@ -121,30 +121,22 @@
 | 库内 `state`（建议 `VARCHAR(32)`） | 产品语义 |
 |-------------------------------------|----------|
 | `PENDING` | 待派发 |
-| `IN_PROGRESS` | 进行中（含核查不通过后退回） |
-| `PENDING_VERIFY` | 待核查（执行方已申报完成——**用户/API 或系统自动**均可，等待核查 Agent 领取/调度） |
-| `VERIFYING` | 核查中（Temporal Activity 或同步核查执行中） |
-| `DONE` | 已完成（**仅**核查 **PASS** 后写入，与 `mag_task_verification` 最新通过记录一致） |
+| `IN_PROGRESS` | 进行中 |
+| `DONE` | 已完成（**申报完成**写入；含用户/API 或系统自动申报） |
 | `BLOCKED` | 阻塞（须 `block_reason` + `blocked_by_agent_id` 可空） |
 
-迁移规则（摘要）：`submit-complete` → `PENDING_VERIFY` 并启动/关联 Workflow；核查 **PASS** → `DONE`；**FAIL** → `IN_PROGRESS`；人工抽检若后续引入，不得跳过核查记录链。
+迁移规则（摘要）：`submit-complete`：`IN_PROGRESS` → `DONE`（可清空 `temporal_workflow_id`）。
 
-**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中**至少一条**（仅凭模型长回复不落库改进日志则**不**自动申报）。**核查类**编排虽可带 `task_id`，但不满足执行方 assignee 条件，**不会**误触发自动申报。
+**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中**至少一条**（仅凭模型长回复不落库改进日志则**不**自动申报）。
 
-### 4.4 核查（§4.5）
-
-| 表名 | 说明 |
-|------|------|
-| **mag_task_verification** | 单次判定：`task_id`、`result`（PASS/FAIL）、`verifier_agent_id`、`rationale`、`evidence_summary`、`search_trace_json`、`created_at`；**禁止 UPDATE 覆盖历史**，仅 INSERT |
-
-### 4.5 项目经理协助与告警
+### 4.4 项目经理协助与告警
 
 | 表名 | 说明 |
 |------|------|
 | **mag_pm_assist_record** | 协助记录：问题类型、根因摘要、动作、被协助 `agent_id` 列表 JSON、`resolved` |
 | **mag_alert_event** | 大屏/通知：类型、项目、关联任务、级别、`payload_json`、`created_at`、是否已确认 |
 
-### 4.6 需求文档与需求池
+### 4.5 需求文档与需求池
 
 | 表名 | 说明 |
 |------|------|
@@ -152,26 +144,26 @@
 | **mag_requirement_revision** | 版本：`doc_id`、`version`、`content`（**MEDIUMTEXT**）、`author_user_id` 可空 |
 | **mag_requirement_pool_item** | 需求池卡片：状态（PENDING_USER/CLOSED/…）、关联 `revision` 或锚点、`payload_json`；**可选** `assigned_decider_user_id`（空=凡具备 `mag:pool:decide` 的本项目成员均可见该待拍板项；非空=仅该用户 + OWNER 可见，见 §16.2） |
 
-### 4.7 发版归档与知识库
+### 4.6 发版归档与知识库
 
 | 表名 | 说明 |
 |------|------|
 | **mag_release_archive** | 发版记录：版本号、时间、`snapshot_json`（或 MinIO key）、`quality_flag`（是否优质回流） |
 | **mag_kb_entry** | 知识库条目：`source`（ARCHIVE_REFLOW/MANUAL）、`title`、`body`、`tags`（JSON）、`keywords`、`archive_id` 可空；**FULLTEXT(title,body)** + 标签索引 |
 
-### 4.8 外部检索审计
+### 4.7 外部检索审计
 
 | 表名 | 说明 |
 |------|------|
 | **mag_external_fetch_audit** | URL（规范化 host）、用户/项目、`http_status`、截断正文 hash、时间 |
 
-### 4.9 定时任务配置（可选）
+### 4.8 定时任务配置（可选）
 
 | 表名 | 说明 |
 |------|------|
 | **mag_scheduled_job_config** | `job_key`、`cron`、`enabled`、`project_id` 可空、`last_run_at` |
 
-### 4.10 Agent 改进日志（产品 §5.3）
+### 4.9 Agent 改进日志（产品 §5.3）
 
 | 表名 | 说明 |
 |------|------|
@@ -186,14 +178,12 @@
 ### 5.1 与 `llm_channel` 的桥接
 
 - **Temporal Activity**（`MagOrchestrationActivitiesImpl`）委托 **`MagAgentScopeRunService`**：按 `mag_agent.llm_channel_id` 与 **触发用户** 调用 `llm_channel`（`selectByIdAndOwner`），**解密 API Key**，按 `LlmProtocol` 构建 **`OpenAIChatModel`**（`baseUrl` + `endpointPath` 与 `LlmProviderCatalog` 一致，兼容各厂商 OpenAI 式网关）或 **`AnthropicChatModel`**，并组装 **`ReActAgent`**（`enableMetaTool(false)`，工具集在实现期按角色扩展）。
-- **每个 `mag_agent` 行**可绑定 `llm_channel_id`；核查 Agent 建议**独立通道**或独立模型配置以便计费隔离。
+- **每个 `mag_agent` 行**可绑定 `llm_channel_id`；可按角色使用独立通道以便计费隔离。
 - 对话体验接口仍走现有 **`LlmChatService` + RestTemplate**；与 AgentScope **并存**，边界为：编排侧用 AgentScope，Playground 侧可继续用直连客户端。
 
 ### 5.2 Agent 与工具（Tools）
 
 - **职能 Agent**：工具可包括 — `searchOrgKb`（SQL LIKE + FULLTEXT）、**`fetchUrl`（或同名）**：经 **服务端 HTTP 客户端**出站，**由模型给出 URL**；**不做白名单**，**响应成功即可进入后续推理**；须过 **SSRF 黑名单**（见 §12）；写 **`mag_external_fetch_audit`**；`appendThreadMessage`、`updateTaskState`（受策略约束）等；**具体清单**在实现期按 **角色** 注册为 AgentScope **`Toolkit`**。
-- **核查 Agent**：强制注册 `searchOrgKb`、`fetchUrl`、`getTaskAcceptanceCriteria`（读需求锚点）等；**禁止**调用将任务标为 DONE 的工具 unless 走核查通过路径。
-- **禁止自审**：承担 **`role_type=VERIFY`** 的 Agent **不得**作为同一任务的 `assignee_agent_id`；写入 `mag_task_verification` 时 **`verifier_agent_id` ≠ `assignee_agent_id`**（应用与 SQL 约束或触发器二选一，建议应用强校验 + DB CHECK 若 MySQL 版本支持）。
 - **记忆**：短期可用 AgentScope **Memory** 绑定 `thread_id`；长期摘要可写入 `mag_message`（SYSTEM）。
 
 ### 5.3 编排与 Temporal 的分工
@@ -204,9 +194,9 @@
 ### 5.4 超时、重试与费用（首期默认，可配置）
 
 - **单次 Activity（含 AgentScope ReAct 环）**： wall-clock 上限建议 **120s**（`aiburst.mag.agentscope.call-timeout-seconds`，与 LLM 调用对齐），硬超时由 Temporal Activity 选项覆盖；**max-iters** 见 `aiburst.mag.agentscope.max-iters`。
-- **重试**：Transient 网络/5xx **指数退避**；**429/配额** 记入 `mag_alert_event`，同一任务核查可 **有限次重试**（如 3 次）后 FAIL 或转人工排障（不修改核查记录，仅运维介入通道配置）。
+- **重试**：Transient 网络/5xx **指数退避**；**429/配额** 记入 `mag_alert_event`，可配置降级或转人工排障。
 - **Token/费用预算**：项目级 `mag_project.config_json` 预留 `daily_token_budget` / `daily_cost_cap`（可选实现）；超出时 **拒绝新的 Agent 调用** 并写告警，**首期可仅记录用量不硬拦**。
-- **死循环 / 互等**：同线程内工具步数上限 + Temporal Workflow 历史长度监控；超过阈值 **终止 Activity** 并记 FAIL + `mag_alert_event`；**不提供**「人工改核查结论」入口（§12）。
+- **死循环 / 互等**：同线程内工具步数上限 + Temporal Workflow 历史长度监控；超过阈值 **终止 Activity** 并记 FAIL + `mag_alert_event`。
 
 ---
 
@@ -216,7 +206,7 @@
 
 | Workflow ID 模式 | 用途 |
 |-------------------|------|
-| `task-verify-{taskId}` | 任务申报完成后：**核查 Agent Activity** → 写 `mag_task_verification`（仅 INSERT）→ 更新 `mag_task.state`；**首期禁止**人工 Signal 覆写核查结论（与 §12 一致） |
+| `task-verify-{taskId}` | **（已废弃）** 历史占位；任务结项由 `submit-complete` 应用服务直写 `DONE`，不再使用独立核查 Workflow |
 | `req-approval-{poolItemId}` | 需求池 **待用户拍板**：`await` **UserDecisionSignal** → Activity 更新池状态与需求修订 |
 | `escalate-{threadId}` | 可选：阻塞升级链路与 SLA 超时合并 |
 
@@ -227,14 +217,12 @@
 
 ### 6.3 与任务状态
 
-- `mag_task.state = PENDING_VERIFY` 时启动或关联 `task-verify-*`；**DONE** 仅由核查通过路径写入（应用服务 + Workflow 最终一致性，可用 **乐观锁版本号** 防并发）。
+- **DONE** 由申报完成路径写入（应用服务 + **乐观锁 `row_version`** 防并发）；与 Temporal 编排成功后的自动申报一致。
 
 ### 6.4 信号、载荷与计时器（首期约定）
 
 | Workflow | Signal / Timer | 说明 |
 |----------|----------------|------|
-| **TaskVerificationWorkflow** | Activity 超时 Timer（建议 **30min**，可配置） | 超时则 Activity 失败 → 记 `mag_alert_event`，任务保持 `PENDING_VERIFY` 或回退策略在实现期二选一（默认 **保持待核查** 便于重试） |
-| **TaskVerificationWorkflow** | ~~HumanOverrideVerification~~ | **不实现** |
 | **UserApprovalWorkflow** | **`UserDecisionSignal`** | JSON 建议字段：`decision`（APPROVE_CHANGE / APPROVE_AS_IS / REJECT 等枚举）、`userId`、`comment` 可选、`decidedAt`；由网关鉴权后注入 `userId` |
 | **UserApprovalWorkflow** | 等待 Timer（可选） | 长期未拍板：**提醒**（写 `mag_alert_event` + 见 §16.3），不自动替用户决策 |
 
@@ -293,8 +281,7 @@
 | GET/POST | `/projects/{id}/threads` | 线程 |
 | GET/POST | `/threads/{id}/messages` | 消息（触发 Agent 可由 POST message 或独立 `/run`） |
 | GET/POST | `/projects/{id}/tasks` | 任务 |
-| POST | `/tasks/{id}/submit-complete` | 执行方申报完成 → `PENDING_VERIFY` + 启动 Workflow（**显式**入口；**亦可**由系统在 §4.3.1「自动申报完成」规则满足时等价触发，无需用户点击） |
-| GET | `/tasks/{id}/verifications` | 核查历史 |
+| POST | `/tasks/{id}/submit-complete` | 执行方申报完成 → `DONE`（**显式**入口；**亦可**由系统在 §4.3.1「自动申报完成」规则满足时等价触发） |
 | GET/PUT | `/projects/{id}/requirement-doc` | 需求文档当前/保存新版本 |
 | GET/POST | `/projects/{id}/requirement-pool` | 需求池 |
 | POST | `/requirement-pool/{id}/decide` | 用户拍板 |
@@ -369,11 +356,6 @@
 ## 12. 安全与非功能
 
 - **隔离**：所有查询带 `project_id` 与成员校验；Agent 运行上下文 **禁止** 注入其他 `project_id`。
-- **核查独立性（硬规则）**：
-  - **`mag_agent.role_type = VERIFY`** 的实例仅允许执行核查链路工具与读操作；**禁止**绑定为需要交付产出的任务的 **唯一**执行人（业务上核查与执行岗位分离）。
-  - **`mag_task_verification`**：`verifier_agent_id` 与任务 `assignee_agent_id` **必须不同**；Temporal Activity 在落库前校验，失败则告警并记 `mag_alert_event`。
-  - 若同一「逻辑角色」需多实例，仍按 **实例 ID** 区分，不得绕开上述约束。
-  - **首期禁止**通过管理界面或 Temporal Signal **覆写、删除已落库的 `mag_task_verification` 记录**以改变任务是否完成；运维仅可通过 **配置修复 + 重跑核查** 等合规路径处理事故。
 - **外网抓取（已确认口径）**：**由 Agent/大模型发起检索**，服务端 **代拉 URL**；**不做白名单**（无允许域名/host 列表前置校验）——**技术上能成功获取的响应即可供模型使用**（含需登录站若工具链将来扩展 Cookie/头，另案）。**仍须**：① **全量审计** `mag_external_fetch_audit`；② **SSRF 防护**——默认 **拒绝** 解析到 **内网/链路本地/metadata** 的地址（如 `127.0.0.0/8`、`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`、`169.254.0.0/16`、`::1`、`metadata.google.internal` 等，可配置扩展）；③ **单响应最大字节**与 **总超时**。
 - **密钥**：沿用 LLM 方案 AES；Temporal Payload 中**不存** apiKey。
 - **观测**：Micrometer（Temporal、LLM 调用耗时、WS 连接数）；关键业务日志带 `projectId`、`taskId`、`workflowId`。
@@ -389,8 +371,6 @@
 | `aiburst.mag.redis.lock-prefix` | 锁前缀 |
 | `aiburst.mag.fetch.ssrf-blocklist-cidrs` | SSRF 拒绝网段（默认内置 RFC1918 等，可追加） |
 | `aiburst.mag.fetch.max-bytes` | 单响应体上限 |
-| `aiburst.mag.verification.max-llm-steps` | 核查单次工具步数上限 |
-| `aiburst.mag.verification.activity-timeout` | 核查 Activity 建议 **30m**（Duration 字符串，实现期解析） |
 | `aiburst.mag.kb.reflow-mode` | **已确认 `auto`**（`quality_flag=1` 自动入库）；保留 `manual_review` 供将来回滚 |
 | `aiburst.mag.notify.qq.enabled` | 是否启用 **QQ 机器人** 外呼 |
 | `aiburst.mag.notify.qq.webhook-url` | QQ Bot / 中间层 **HTTP 回调地址**（具体协议与签名见实现 README） |
@@ -408,7 +388,7 @@
 1. **Boot 3.5 + JDK 24**（与当前仓库一致）+ LLM/权限冒烟。  
 2. **Flyway V3** 建表 + 项目/成员/Agent/Task **CRUD API**（含 §9 已列路径的增量实现）。  
 3. **AgentScope Java** 桥接通道 + 单线程对话 MVP。  
-4. **Temporal** 接入 + **TaskVerificationWorkflow** + 核查记录表。  
+4. **Temporal** 接入（编排 Activity；任务结项由应用服务 `submit-complete`）。  
 5. **WebSocket** 大屏 + 告警事件。  
 6. 需求池、升级链、外网代理、定时 Redis 锁 job；**要活/阻塞/协助记录/改进日志/模块树**等 §9 增补接口。  
 7. 发版归档与知识库回流；**变更影响分析**与**版本 diff**；**蓝图引用** API。
@@ -417,7 +397,7 @@
 
 ## 15. DDL 草案（Flyway `V3__mag_module.sql` 骨架）
 
-以下为 **与已提交 `V3__mag_module.sql` 一致的文档副本**；实现期可调整字段长度、索引与字符集。与 `V1`/`V2` 风格一致（InnoDB、utf8mb4）。**外键**可选（先建表后加 FK 避免顺序问题）。**权限种子**见 `V4__mag_permission_seed.sql`（§19.6）。
+以下为 **MAG 库表在文档中的合并表述**：**`V3__mag_module.sql`** 为初始建表；**`V11__remove_task_verification.sql`** 删除 `mag_task_verification`，将任务状态中的待核查/核查中统一迁移为已完成，并将 `role_type = VERIFY` 的 Agent 改为 `TEST`。下列 DDL **已按 V3+V11 后的有效结构整理**（字段长度、索引仍以仓库内迁移脚本为最终准绳）。与 `V1`/`V2` 风格一致（InnoDB、utf8mb4）。**外键**可选（先建表后加 FK 避免顺序问题）。**权限种子**见 `V4__mag_permission_seed.sql`（§19.6）。
 
 ```sql
 -- 项目
@@ -441,12 +421,12 @@ CREATE TABLE mag_project_member (
     KEY idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Agent：role_type 含 VERIFY；parent_id 主/子
+-- Agent：parent_id 主/子（历史 VERIFY 已由 V11 迁移为 TEST，新库不应再写入 VERIFY）
 CREATE TABLE mag_agent (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     project_id BIGINT NOT NULL,
     parent_agent_id BIGINT NULL,
-    role_type VARCHAR(32) NOT NULL COMMENT 'PM,PRODUCT,BACKEND,FRONTEND,TEST,VERIFY',
+    role_type VARCHAR(32) NOT NULL COMMENT 'PM,PRODUCT,BACKEND,FRONTEND,TEST',
     name VARCHAR(128) NOT NULL,
     llm_channel_id BIGINT NULL COMMENT 'llm_channel.id',
     system_prompt_profile VARCHAR(64) NULL,
@@ -487,7 +467,7 @@ CREATE TABLE mag_task (
     module_id BIGINT NULL,
     title VARCHAR(256) NOT NULL,
     description TEXT NULL,
-    state VARCHAR(32) NOT NULL COMMENT 'PENDING,IN_PROGRESS,PENDING_VERIFY,VERIFYING,DONE,BLOCKED',
+    state VARCHAR(32) NOT NULL COMMENT 'PENDING,IN_PROGRESS,DONE,BLOCKED',
     assignee_agent_id BIGINT NULL,
     reporter_agent_id BIGINT NULL,
     requirement_ref JSON NULL,
@@ -499,19 +479,6 @@ CREATE TABLE mag_task (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_project_state (project_id, state),
     KEY idx_assignee (assignee_agent_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE mag_task_verification (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    task_id BIGINT NOT NULL,
-    result VARCHAR(16) NOT NULL COMMENT 'PASS,FAIL',
-    verifier_agent_id BIGINT NOT NULL,
-    rationale TEXT NOT NULL,
-    evidence_summary TEXT NULL,
-    search_trace_json JSON NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_task (task_id),
-    KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE mag_thread (
@@ -635,7 +602,7 @@ CREATE TABLE mag_scheduled_job_config (
 ```
 
 **说明**：`mag_project.current_req_doc_id` 与 `mag_requirement_doc` 的回填可在同一迁移脚本末尾用 `UPDATE` 或应用启动脚本处理。  
-**assignee ≠ verifier**：涉及 **`mag_task.assignee_agent_id` 与 `mag_task_verification.verifier_agent_id` 跨表**，MySQL **CHECK** 无法单行表达；**首期以 Activity 落库前强校验 + 集成测试为准**；若未来在 `mag_task_verification` 上冗余 `assignee_agent_id` 列，可对**同行**两列加 CHECK（可选演进）。  
+**任务结项**：由应用服务 `submit-complete`（及可选自动申报监听器）将 `IN_PROGRESS` 置为 `DONE`，**无**独立核查子表与核查方字段。  
 **需求正文**：`mag_requirement_revision.content` 使用 **MEDIUMTEXT** 直接落库；单版本体量若长期逼近上限再评估分块或 MinIO（**已确认首期坚持 MEDIUMTEXT**）。
 
 ---
@@ -645,7 +612,7 @@ CREATE TABLE mag_scheduled_job_config (
 ### 16.1 组织知识库与归档回流
 
 - **准入**：`mag_release_archive.quality_flag = 1` 表示**候选**优质；**已确认**：由定时或发版后任务 **自动** 生成 `mag_kb_entry`（`source=ARCHIVE_REFLOW`，可附 `archive_id`）。配置 **`aiburst.mag.kb.reflow-mode=auto`**（默认）；保留 `manual_review` 供将来回滚。
-- **检索**：首期 **FULLTEXT + 标签/关键词**；核查 Agent 检索范围 = 组织可见条目 + 本项目授权（与 §4.5 留痕字段一致：`search_trace_json`）。
+- **检索**：首期 **FULLTEXT + 标签/关键词**；组织知识库检索范围 = 组织可见条目 + 本项目授权；外网拉取留痕见 **`mag_external_fetch_audit`**（§12）。
 
 ### 16.2 待办与需求池读模型
 
@@ -668,7 +635,7 @@ CREATE TABLE mag_scheduled_job_config (
 
 - **策略**：**大模型/Agent 自主决定检索 URL**；服务端 **代理拉取**，**不做白名单**——**HTTP 层面能成功拿到响应体即可**供后续推理（登录态/Cookie 若未来要支持，单独加工具能力，不本文展开）。
 - **安全底线**：**SSRF 黑名单**（§12）+ **全量 `mag_external_fetch_audit`** + **超时与最大字节**（**不另设 URL 允许名单**）。
-- **失败**：拉取失败时 Activity 记录原因，核查可 **FAIL** 或带「检索不可用」依据；**审计必写**。
+- **失败**：拉取失败时 Activity 记录原因并写入审计；**审计必写**。
 
 ### 16.6 数据生命周期与灾备（已确认）
 
@@ -700,7 +667,7 @@ CREATE TABLE mag_scheduled_job_config (
 | 8 | 发版归档；项目隔离；新项目只读/受控引用归档经验 | `mag_release_archive`；§12 隔离；`mag_kb_entry` + 模块蓝图 API |
 | 9 | 组织知识库：归档回流 + 人工录入 | `mag_kb_entry`；§16.1 |
 | 10 | 真人处理待用户拍板；待办与/或需求池可达 | `GET /todos`；需求池列表 §16.2；RBAC §10 |
-| 11 | 申报完成须经核查 Agent；以核查结论为准 | §4.5、`TaskVerificationWorkflow`、`mag_task_verification` 仅 INSERT |
+| 11 | 申报完成后任务进入已完成（DONE） | §4.3.1 状态机；`POST /tasks/{id}/submit-complete` 与自动申报 |
 
 ### 17.3 与产品 §2.1「本期包含」模块表（全行，不省略）
 
@@ -708,12 +675,12 @@ CREATE TABLE mag_scheduled_job_config (
 |----------|-----------------------------------------------|
 | **Agent 管理** | `mag_agent`（实例）；模板与「能力描述」放 `extra_json` / 后续 `mag_agent_template` 表（若单表不足则二期拆表，**首期实例级配置须可验收**）；`GET/POST /projects/{id}/agents`、`PUT /agents/{id}`；工作台 Agent Tab |
 | **项目与成员视图** | `mag_project`、`mag_project_member`；项目 CRUD §9；成员 **不设仅拍板角色**（§0）；Agent 列表与主从 `parent_agent_id`；健康度/心跳：`extra_json` 或 Redis 心跳键 + 大屏聚合 |
-| **组织知识库** | `mag_kb_entry`；来源 `ARCHIVE_REFLOW` / `MANUAL`；`GET/POST /kb/entries` 及单条 GET/PUT/DELETE；产品/核查检索工具 `searchOrgKb` §5.2 |
+| **组织知识库** | `mag_kb_entry`；来源 `ARCHIVE_REFLOW` / `MANUAL`；`GET/POST /kb/entries` 及单条 GET/PUT/DELETE；产品检索工具 `searchOrgKb` §5.2 |
 | **用户待办** | `GET /todos` 聚合 `mag_requirement_pool_item.state=PENDING_USER` + §16.2 过滤；与需求池 **同一读模型**，前端 **待办菜单 + 需求池 Tab 双向跳转**（产品 §5.6.2） |
 | **协作与沟通可观测** | `mag_thread`、`mag_message`；按项目/Agent/时间筛选：`GET /threads` 带 query（`agentId`、`from`、`to`）；权限脱敏：服务端按角色裁剪 `content` 或字段级 |
 | **协调链** | 编排侧：PM Agent 与主 Agent 工具与任务表；消息层记录「请求派工、阻塞、澄清」；**不省略**主→PM、主→子 的会话类型（可用 `message` 内 JSON `type` 约定） |
 | **任务与申领** | `mag_task`；子 Agent **要活** `POST /tasks/{id}/request-next`（写入消息队列或 `mag_message` SYSTEM 事件 + PM/主 Agent 消费）；PM 按 `mag_module` 与任务状态派工 |
-| **任务完成核查** | `PENDING_VERIFY`/`VERIFYING`/`DONE` 与 §4.3.1；`TaskVerificationWorkflow`；`mag_task_verification`；**禁止**执行方工具直改 DONE |
+| **任务结项** | `IN_PROGRESS` → `DONE`（申报完成）；§4.3.1；编排工具不绕过 HTTP 权限直改状态 |
 | **改进记录** | `mag_agent_improvement_log`；`GET /projects/{id}/agents/{agentId}/improvements` 或 query 参数过滤；导出 CSV 可选 |
 | **定时任务** | `mag_scheduled_job_config`；`GET/PUT /scheduled-jobs`（权限 `mag:project:manage` 或独立 `mag:sched:manage` 种子另议）；执行写时间线 `mag_message` 或 `mag_alert_event` |
 | **需求文档中心** | `mag_requirement_doc`、`mag_requirement_revision`；版本列表 `GET .../requirement-doc/revisions`；对比 `GET .../requirement-doc/diff`（首期文本 diff）；**评审状态**可放 `doc` 扩展字段或 `revision` 旁路 JSON（实现期二选一，**须在 Flyway 落字段**） |
@@ -723,7 +690,7 @@ CREATE TABLE mag_scheduled_job_config (
 | **发版归档与发布版本** | `mag_release_archive`；快照 JSON 含需求基线、模块清单、任务结论；**只读**不可改历史行 |
 | **组织经验与模块复用** | 回流 §16.1；新项目 `POST /projects/{id}/modules/import-blueprint`（来源 `archive_id` 或 `kb_entry_id`，复制后归本项目）；检索授权 §7 |
 
-### 17.4 与产品 §3「六类 Agent」
+### 17.4 与产品 §3「五类 Agent」
 
 | 产品类型 | `role_type` | 技术要点 |
 |----------|-------------|----------|
@@ -731,22 +698,19 @@ CREATE TABLE mag_scheduled_job_config (
 | 产品 Agent | `PRODUCT` | 维护需求修订；`searchOrgKb` + `fetchUrl`；写需求池 `payload_json`（对比择优、检索留痕）；窄口径创建 `PENDING_USER` |
 | 后端开发 Agent | `BACKEND` | 子 Agent `parent` 指向主后端实例 |
 | 前端开发 Agent | `FRONTEND` | 同上 |
-| 测试 Agent | `TEST` | 申报完成同样进核查 |
-| 核查 Agent | `VERIFY` | 独立通道建议；**禁止**任任务唯一 assignee 与 verifier 同实例 |
+| 测试 Agent | `TEST` | `mag_record_unit_test_plan` 等测试侧工具；任务申报完成与其余职能一致 |
 
-### 17.5 与产品 §4 主/子、协调、阻塞、可观测、核查（§4.1～§4.5）
+### 17.5 与产品 §4 主/子、协调、阻塞、可观测（§4.1～§4.4）
 
 - **§4.1～§4.2**：主/子、`parent_agent_id`；主向 PM 请求任务 → 消息 + 任务表更新；界面展示待派发/进行中/阻塞（任务查询 API 分组或前端聚合）。
 - **§4.3**：阻塞须 **主动消息**（`mag_message` + 建议 `content` 内 JSON：`{ "kind":"BLOCK", "reasonCode", "summary" }`）；**每次** PM 协助写入 `mag_pm_assist_record`（`assisted_agent_ids_json`、`resolved`）。
 - **§4.4**：线程时间线；用户 `@Agent` → `sender_type=USER` + 解析提及 AgentId 存 `payload`；权限控制读接口。
-- **§4.5**：核查记录字段与产品一致：`rationale`、`evidence_summary`、`search_trace_json`；**历次**保留；UI 任务详情「核查历史」Tab；测试/产品/PM 任务 **无例外**。
-
 ### 17.6 与产品 §5.1～§5.8（项目管理功能）
 
 | 小节 | 需求要点 | 技术响应 |
 |------|----------|----------|
 | **§5.1** | 列表：Agent 数、最近活动、需求版本 | 列表接口聚合 `COUNT(agent)`、`MAX(message.created_at)`、`current_req_doc_id`/version；详情页 Tab 与跳转待办 |
-| **§5.2** | 状态：待派发/进行中/待核查/核查中/已完成/阻塞 | 与 §4.3.1 一致；核查不通过 → `IN_PROGRESS` + 最新 FAIL 记录 |
+| **§5.2** | 状态：待派发/进行中/已完成/阻塞 | 与 §4.3.1 一致 |
 | **§5.3** | 改进日志可检索、导出 | §17.2 改进记录行 |
 | **§5.4** | 定时任务可配置、结果可见 | `mag_scheduled_job_config` + 执行日志痕迹 |
 | **§5.5** | 大屏实时、Agent 状态、效率、告警类型 | WS 事件 + §16.4；`STALL`、`PM_ESCALATION` 等 `alert_type` |
@@ -768,7 +732,7 @@ CREATE TABLE mag_scheduled_job_config (
 
 ### 17.9 与产品 §8「非功能」
 
-- 可追溯性：列出的各实体均可由 `project_id`/`task_id` 关联查询；大屏与池、归档、核查、协助均已表化。
+- 可追溯性：列出的各实体均可由 `project_id`/`task_id` 关联查询；大屏与池、归档、协助均已表化。
 - 性能：消息分页、线程归档策略（冷数据表可选）。
 - 可靠性：定时任务失败 → `mag_alert_event` + 可选重试字段于 `mag_scheduled_job_config`。
 
@@ -781,18 +745,17 @@ CREATE TABLE mag_scheduled_job_config (
 | 1 | 可创建项目并新增多类 Agent（含主/子），项目内见列表与状态 | `POST/GET .../projects`、`.../agents`；DB `mag_project`、`mag_agent.parent_agent_id` |
 | 2 | 可观察到 Agent 间沟通记录 | `GET .../threads`、`.../messages`；`sender_type=AGENT` 可查 |
 | 3 | 子 Agent 完工触发「要活」；主向 PM 请求派工；PM 按模块与进度更新分配 | `POST .../tasks/{id}/request-next` + 消息或编排；`mag_module` + 任务 `assignee`/`state` 变更审计 |
-| 4 | 申报完成后待核查/核查中；核查通过才已完成；各职能含测试/产品/PM 均无例外 | 状态机 §4.3.1 + `TaskVerificationWorkflow` + `mag_task_verification` 仅 INSERT |
-| 5 | 每一次核查通过/不通过可查、可追溯（持久化、时间与依据） | 列表 API `.../verifications`；DB 多行历史 |
-| 6 | 改进记录可查询 | `GET .../improvements` + `mag_agent_improvement_log` |
-| 7 | 定时任务按配置执行并在界面留痕 | `mag_scheduled_job_config` + 执行写 `mag_message` 或 `mag_alert_event` |
-| 8 | 需求文档可编辑并新版本；变更后展示受影响功能点并驱动重排 | `PUT .../requirement-doc`；`POST .../requirement-change/analyze` 输出与任务建议留痕 |
-| 9 | 仅 5.6 窄口径须用户拍板后落库 | 池状态 `PENDING_USER` + `decide` API + Workflow Signal |
-| 10 | 运营大屏展示是否在干活与产出效率；停摆与 PM 无法协调可见告警 | §8 事件 + `GET .../dashboard/snapshot` + `mag_alert_event` |
-| 11 | 派工后无法执行可向 PM 说明原因；可查 PM 协助了哪些问题与哪些 Agent | `POST .../block` + `mag_pm_assist_record` + 消息 |
-| 12 | 升级产品后：命中成熟产品时已闭环记录符合 5.6.1；多竞品有对比择优留痕 | 池 `payload_json` 键完整 + `mag_external_fetch_audit` |
-| 13 | 仅窄口径产生待用户拍板；已登录用户在待办与/或需求池可处理 | `GET /todos` + 需求池列表 §16.2；待办聚合他类为可选 |
-| 14 | 组织知识库可见归档回流与人工录入；产品 Agent 可检索 | `mag_kb_entry` + 工具 `searchOrgKb` |
-| 15 | 发版生成归档，含协调问题、停滞原因与经验摘要；项目隔离；新项目可引用/复制蓝图 | `mag_release_archive` + `POST .../import-blueprint` + §12 隔离校验 |
+| 4 | 申报完成后任务为已完成（DONE）；各职能一致 | 状态机 §4.3.1；`POST .../submit-complete` |
+| 5 | 改进记录可查询 | `GET .../improvements` + `mag_agent_improvement_log` |
+| 6 | 定时任务按配置执行并在界面留痕 | `mag_scheduled_job_config` + 执行写 `mag_message` 或 `mag_alert_event` |
+| 7 | 需求文档可编辑并新版本；变更后展示受影响功能点并驱动重排 | `PUT .../requirement-doc`；`POST .../requirement-change/analyze` 输出与任务建议留痕 |
+| 8 | 仅 5.6 窄口径须用户拍板后落库 | 池状态 `PENDING_USER` + `decide` API + Workflow Signal |
+| 9 | 运营大屏展示是否在干活与产出效率；停摆与 PM 无法协调可见告警 | §8 事件 + `GET .../dashboard/snapshot` + `mag_alert_event` |
+| 10 | 派工后无法执行可向 PM 说明原因；可查 PM 协助了哪些问题与哪些 Agent | `POST .../block` + `mag_pm_assist_record` + 消息 |
+| 11 | 升级产品后：命中成熟产品时已闭环记录符合 5.6.1；多竞品有对比择优留痕 | 池 `payload_json` 键完整 + `mag_external_fetch_audit` |
+| 12 | 仅窄口径产生待用户拍板；已登录用户在待办与/或需求池可处理 | `GET /todos` + 需求池列表 §16.2；待办聚合他类为可选 |
+| 13 | 组织知识库可见归档回流与人工录入；产品 Agent 可检索 | `mag_kb_entry` + 工具 `searchOrgKb` |
+| 14 | 发版生成归档，含协调问题、停滞原因与经验摘要；项目隔离；新项目可引用/复制蓝图 | `mag_release_archive` + `POST .../import-blueprint` + §12 隔离校验 |
 
 ### 17.11 与产品 §11「建议在技术方案补齐的要点」— 本文已定稿
 
@@ -839,14 +802,13 @@ CREATE TABLE mag_scheduled_job_config (
 
 | 字段/场景 | 取值 | 说明 |
 |-----------|------|------|
-| `mag_task.state` | `PENDING`, `IN_PROGRESS`, `PENDING_VERIFY`, `VERIFYING`, `DONE`, `BLOCKED` | 见 §4.3.1 |
-| `mag_task_verification.result` | `PASS`, `FAIL` | 仅追加 INSERT |
-| `mag_agent.role_type` | `PM`, `PRODUCT`, `BACKEND`, `FRONTEND`, `TEST`, `VERIFY` | 与产品六类 + 核查 |
+| `mag_task.state` | `PENDING`, `IN_PROGRESS`, `DONE`, `BLOCKED` | 见 §4.3.1（历史库可能仍有旧状态值，迁移见 Flyway V11） |
+| `mag_agent.role_type` | `PM`, `PRODUCT`, `BACKEND`, `FRONTEND`, `TEST` | 与产品五类 |
 | `mag_message.sender_type` | `USER`, `AGENT`, `SYSTEM` | |
 | `mag_requirement_pool_item.state`（**与产品 §6.3 对齐，全量**） | `PENDING_USER`（待用户拍板，**仅 5.6 窄口径**）；`CLOSED_BY_PRODUCT`（已闭环-产品 Agent，可审计）；`USER_CONFIRMED_OK`；`USER_CONFIRMED_CHANGE`；`USER_REJECTED`；`CLOSED`（关闭）；`USER_CHANGE_REQUESTED`（用户要求修订，与拍板信号映射）；另有实现期可增：`COMPARING_OPTIONS`（多方案对比中，可选） | **禁止**用状态缩略导致产品 §6.3 任一分支无法落库；**前后端同表** |
 | `UserDecisionSignal.decision`（Temporal） | `APPROVE_AS_IS`, `APPROVE_WITH_CHANGE`, `REJECT`, `DEFER` | 实现期可删减；落库映射到池状态 |
 | `mag_alert_event.level` | `INFO`, `WARN`, `ERROR` | |
-| `mag_alert_event.alert_type`（建议） | `STALL`, `PM_ESCALATION`, `VERIFY_FAILED`, `POOL_REMINDER`, `SYSTEM` | 可扩展 |
+| `mag_alert_event.alert_type`（建议） | `STALL`, `PM_ESCALATION`, `TASK_BLOCKED`, `ORCH_ACTIVITY_FAILED`, `POOL_REMINDER`, `SYSTEM` 等 | 可扩展；以代码实际 `raise` 为准 |
 | `mag_kb_entry.source` | `ARCHIVE_REFLOW`, `MANUAL` | |
 | `mag_agent_improvement_log.change_type` | `CONFIG`, `PROMPT`, `FEEDBACK`, `QUALITY_TAG`, `OTHER` | |
 | `mag_project_member.role_in_project` | `OWNER`, `MEMBER`, `VIEWER` | |
@@ -869,7 +831,6 @@ CREATE TABLE mag_scheduled_job_config (
 | 41003 | `MAG_NOT_FOUND` | 404 | 项目/任务/线程/需求/池项等不存在或已删 |
 | 41010 | `MAG_TASK_STATE_INVALID` | 409 | 任务状态不允许当前操作（如非 IN_PROGRESS 却申报完成） |
 | 41011 | `MAG_ROW_VERSION_CONFLICT` | 409 | `row_version` 乐观锁冲突，客户端应刷新后重试 |
-| 41012 | `MAG_VERIFY_ASSIGNEE_CONFLICT` | 409 | 核查落库：`verifier_agent_id` 与 `assignee_agent_id` 相同 |
 | 41013 | `MAG_POOL_DECIDE_NOT_ALLOWED` | 403 | 无 `mag:pool:decide` 或不符合 `assigned_decider_user_id` 规则 |
 | 41014 | `MAG_POOL_STATE_INVALID` | 409 | 需求池项非待拍板态却调用 decide |
 | 41020 | `MAG_TEMPORAL_START_FAILED` | 502 | 启动/信号 Workflow 失败（Temporal 不可用或参数非法） |
@@ -906,9 +867,9 @@ springdoc:
 
 | 类型 | 类名示例 | 说明 |
 |------|-----------|------|
-| Workflow | `TaskVerificationWorkflow`, `UserApprovalWorkflow` | 接口 + Impl；**无 IO** |
-| Activity | `MagVerificationActivities`, `MagPoolActivities` | `@ActivityMethod`；DB/LLM/WS |
-| 启动器 | `MagWorkflowClient` | 注入 `WorkflowClient`，封装 `task-verify-{taskId}`、`req-approval-{poolItemId}` |
+| Workflow | `UserApprovalWorkflow`（及编排类 Workflow，实现期命名） | 接口 + Impl；**无 IO** |
+| Activity | `MagOrchestrationActivities` 等 | `@ActivityMethod`；DB/LLM/WS |
+| 启动器 | `MagWorkflowClient` | 注入 `WorkflowClient`，封装 `req-approval-{poolItemId}` 等 |
 
 **Payload**：Workflow 入参仅含 **id 与标量**（`taskId`、`poolItemId`、`projectId`）；**禁止**传入 apiKey、完整需求正文；大文本在 Activity 内按 id 查库。
 
@@ -943,6 +904,7 @@ QQ 侧将 `title` + `summary` + 链接（若配置 `aiburst.mag.notify.qq.detail
 |------|------|
 | [docker-compose.temporal.yml](../docker-compose.temporal.yml) | Temporal + PostgreSQL + UI（开发） |
 | [backend/.../V3__mag_module.sql](../backend/src/main/resources/db/migration/V3__mag_module.sql) | `mag_*` 表 |
+| [backend/.../V11__remove_task_verification.sql](../backend/src/main/resources/db/migration/V11__remove_task_verification.sql) | 移除 `mag_task_verification`；迁移任务/Agent 角色 |
 | [backend/.../V4__mag_permission_seed.sql](../backend/src/main/resources/db/migration/V4__mag_permission_seed.sql) | `mag:*` 菜单与权限种子 |
 | [技术方案/mag-openapi-stub.yaml](mag-openapi-stub.yaml) | OpenAPI 3.0 路径草案（§19.2） |
 

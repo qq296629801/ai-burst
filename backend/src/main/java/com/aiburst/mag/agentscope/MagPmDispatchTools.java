@@ -33,7 +33,7 @@ public final class MagPmDispatchTools {
     @Tool(
             name = "list_dispatchable_agents",
             description =
-                    "列出当前项目中可被指派为任务执行人的 Agent（不含核查 VERIFY）。"
+                    "列出当前项目中可被指派为任务执行人的 Agent（已启用者）。"
                             + "派工前应先调用本工具取得合法的 assigneeAgentId。")
     public String listDispatchableAgents() {
         List<MagAgent> list = agentMapper.selectByProjectId(projectId);
@@ -42,7 +42,7 @@ public final class MagPmDispatchTools {
         }
         StringBuilder sb = new StringBuilder();
         for (MagAgent a : list) {
-            if ("VERIFY".equals(a.getRoleType())) {
+            if (a.getStatus() != null && a.getStatus() == 0) {
                 continue;
             }
             sb.append("id=")
@@ -61,7 +61,7 @@ public final class MagPmDispatchTools {
             description =
                     "列出当前项目全部任务（id、state、title、assigneeAgentId、moduleId）。"
                             + "在派工后、或需要判断还有哪些工作未完成、是否继续派工时调用；"
-                            + "结合 state（PENDING/IN_PROGRESS/BLOCKED/PENDING_VERIFY/VERIFYING/DONE 等）识别缺口。")
+                            + "结合 state（PENDING/IN_PROGRESS/BLOCKED/DONE 等）识别缺口。")
     public String listProjectTasks() {
         try {
             List<Map<String, Object>> rows = taskService.listByProject(projectId, triggerUserId);
@@ -140,10 +140,10 @@ public final class MagPmDispatchTools {
             name = "dispatch_task",
             description =
                     "为当前项目创建任务并指派执行 Agent（项目经理派工）。"
-                            + "assigneeAgentId 必须来自 list_dispatchable_agents，且不得为 VERIFY。")
+                            + "assigneeAgentId 必须来自 list_dispatchable_agents。")
     public String dispatchTask(
             @ToolParam(name = "title", description = "任务标题") String title,
-            @ToolParam(name = "assigneeAgentId", description = "执行 Agent 的数字 id（本项目、非 VERIFY）")
+            @ToolParam(name = "assigneeAgentId", description = "执行 Agent 的数字 id（本项目）")
                     long assigneeAgentId,
             @ToolParam(name = "description", description = "任务说明，可空", required = false) String description,
             @ToolParam(name = "moduleId", description = "关联功能模块 id，可空", required = false) Long moduleId) {

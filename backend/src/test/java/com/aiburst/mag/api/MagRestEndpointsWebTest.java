@@ -54,19 +54,11 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
 
     @Test
     @WithMockMagUser(authorities = {"mag:project:list", "mag:task:operate"})
-    void tasks_beginVerifyAndVerifyDecision() throws Exception {
-        doNothing().when(taskService).beginVerify(eq(11L), anyLong());
-        mockMvc.perform(post("/api/mag/tasks/11/begin-verify"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0));
-
-        doNothing()
-                .when(taskService)
-                .submitVerificationDecision(eq(12L), any(), anyLong(), eq(false));
-        mockMvc.perform(post("/api/mag/tasks/12/verify-decision")
+    void tasks_submitComplete() throws Exception {
+        doNothing().when(taskService).submitComplete(eq(11L), any(), anyLong());
+        mockMvc.perform(post("/api/mag/tasks/11/submit-complete")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(
-                                "{\"result\":\"PASS\",\"verifierAgentId\":9,\"rationale\":\"抽检通过\",\"rowVersion\":0}"))
+                        .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
     }

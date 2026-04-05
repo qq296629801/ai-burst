@@ -9,7 +9,6 @@ import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.mapper.MagAgentMapper;
-import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.service.MagCoordinationChatWriter;
 import com.aiburst.mag.service.MagImprovementLogService;
 import com.aiburst.mag.service.MagModuleService;
@@ -56,7 +55,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Temporal Activity 内通过 AgentScope Java 调用 {@link MagAgent} 绑定的大模型通道；
- * 会话持久化目录按 projectId + agentId 隔离；按角色注册工具（PM 派工、产品需求、开发分层、测试计划、A2A、
+ * 会话持久化目录按 projectId + agentId 隔离；按角色注册工具（PM 派工、产品需求、开发分层、测试单测计划、A2A、
  * 主 Agent 向 PM 要派工 {@link MagMainAgentPmRequestTools}、可选 MCP 与 classpath Agent Skill、PM 子 Agent as Tool）。
  */
 @Slf4j
@@ -74,7 +73,6 @@ public class MagAgentScopeRunService {
     private final MagTaskService magTaskService;
     private final MagModuleService magModuleService;
     private final MagAgentMapper magAgentMapper;
-    private final MagTaskMapper magTaskMapper;
     private final MagRequirementService magRequirementService;
     private final MagImprovementLogService magImprovementLogService;
     private final MagMcpToolRegistry magMcpToolRegistry;
@@ -411,11 +409,9 @@ public class MagAgentScopeRunService {
                             "BACKEND_DEV_PLAN",
                             magImprovementLogService));
         }
-        if ("VERIFY".equals(role)) {
+        if ("TEST".equals(role)) {
             toolkit.registerTool(
-                    new MagVerifyTestTools(projectId, triggerUserId, agentId, magImprovementLogService));
-            toolkit.registerTool(
-                    new MagVerifyTaskTools(projectId, triggerUserId, agentId, magTaskMapper, magTaskService));
+                    new MagTestUnitPlanTools(projectId, triggerUserId, agentId, magImprovementLogService));
         }
     }
 
@@ -453,13 +449,12 @@ public class MagAgentScopeRunService {
         if (isPm) {
             return base
                     + "你是项目经理：使用 list_dispatchable_agents、dispatch_task 协调产品、开发、测试等职能 Agent；"
-                    + "派工前若不清楚执行人 id，必须先调用 list_dispatchable_agents；"
-                    + "核查（VERIFY）角色绝不能作为 dispatch_task 的 assigneeAgentId。"
+                    + "派工前若不清楚执行人 id，必须先调用 list_dispatchable_agents。"
                     + "每次派工后或需要掌握全局时，应调用 list_project_tasks 与 list_project_modules，"
-                    + "按任务 state（PENDING/IN_PROGRESS/BLOCKED/PENDING_VERIFY/VERIFYING/DONE）与模块覆盖分析进度与未完项；"
+                    + "按任务 state（PENDING/IN_PROGRESS/BLOCKED/DONE）与模块覆盖分析进度与未完项；"
                     + "若仍有明确缺口且可指派，继续 dispatch_task；若当前无合适新增任务、应等待执行方推进或等待各职能主 Agent 通过 mag_ask_pm_for_next_tasks 要活，"
                     + "须在回复中简要说明进度结论与下一步等待点。"
-                    + "系统可能在任务核查结项（DONE）后自动触发你的一轮复盘编排，须按说明用工具检查是否仍有非 DONE 任务并决定是否再派工或声明本阶段已全部完成。"
+                    + "系统可能在任务结项（DONE）后自动触发你的一轮复盘编排，须按说明用工具检查是否仍有非 DONE 任务并决定是否再派工或声明本阶段已全部完成。"
                     + "需要结构化思考时可先用 pm_delegate_reflection（Agent as Tool）。"
                     + "若用户意图已明确，应调用工具完成派工并给出简短总结；回答须简洁。";
         }
@@ -477,10 +472,9 @@ public class MagAgentScopeRunService {
                     + coordinationHierarchySuffix(agent, isPm)
                     + "回答须简洁。";
         }
-        if ("VERIFY".equals(agent.getRoleType())) {
+        if ("TEST".equals(agent.getRoleType())) {
             return base
-                    + "你是测试/核查职能：对「待核查/核查中」任务须用 mag_submit_task_verification 提交 PASS（结项）或 FAIL（退回执行），"
-                    + "并写明 rationale；可选用 mag_record_unit_test_plan 记录单测范围。"
+                    + "你是测试职能：可用 mag_record_unit_test_plan 记录单测范围与关键断言，便于开发与项目经理 visibility。"
                     + coordinationHierarchySuffix(agent, isPm)
                     + "回答须简洁。";
         }

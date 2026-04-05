@@ -54,7 +54,7 @@ paths:
         '200':
           description: OK — data 为任务行
         '409':
-          description: 核查 Agent 不可作为执行人等 — MAG_VERIFY_ASSIGNEE_CONFLICT
+          description: 状态或数据不允许 — MAG_TASK_STATE_INVALID 等
   /api/mag/tasks/{id}/pm-reassign:
     post:
       tags: [mag-task]
@@ -87,9 +87,9 @@ paths:
   /api/mag/tasks/{id}/submit-complete:
     post:
       tags: [mag-task]
-      summary: 申报完成 → PENDING_VERIFY + Workflow
+      summary: 申报完成 — 进行中 → 已完成（DONE）
       description: >
-        将进行中任务申报为待核查。与产品 §4.5 一致：不直落 DONE。系统也可在编排成功且满足产出物等规则时自动等价调用（见技术方案 §4.3.1），本接口为显式人工/API 入口。
+        将进行中任务标记为已完成。系统也可在编排成功且满足产出物等规则时自动等价调用（见技术方案 §4.3.1），本接口为显式人工/API 入口。
       parameters:
         - $ref: '#/components/parameters/TaskId'
         - $ref: '#/components/parameters/IdempotencyKey'

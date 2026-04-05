@@ -77,22 +77,9 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     expect(http.post).toHaveBeenCalledWith('/mag/agents/4/run', {})
   })
 
-  it('任务核查 begin-verify / verify-decision', async () => {
-    await mag.magBeginVerifyTask(11)
-    expect(http.post).toHaveBeenCalledWith('/mag/tasks/11/begin-verify')
-
-    await mag.magSubmitVerifyDecision(12, {
-      result: 'FAIL',
-      verifierAgentId: 3,
-      rationale: '需补测试',
-      rowVersion: 1,
-    })
-    expect(http.post).toHaveBeenCalledWith('/mag/tasks/12/verify-decision', {
-      result: 'FAIL',
-      verifierAgentId: 3,
-      rationale: '需补测试',
-      rowVersion: 1,
-    })
+  it('任务申报完成 submit-complete', async () => {
+    await mag.magSubmitComplete(11, { rowVersion: 2 })
+    expect(http.post).toHaveBeenCalledWith('/mag/tasks/11/submit-complete', { rowVersion: 2 })
   })
 
   it('产出物聚合', async () => {

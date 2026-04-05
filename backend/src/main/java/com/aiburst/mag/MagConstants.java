@@ -14,8 +14,6 @@ public final class MagConstants {
 
     public static final String TASK_PENDING = "PENDING";
     public static final String TASK_IN_PROGRESS = "IN_PROGRESS";
-    public static final String TASK_PENDING_VERIFY = "PENDING_VERIFY";
-    public static final String TASK_VERIFYING = "VERIFYING";
     public static final String TASK_DONE = "DONE";
     public static final String TASK_BLOCKED = "BLOCKED";
 

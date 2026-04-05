@@ -75,20 +75,6 @@ export function magSubmitComplete(taskId, data) {
   return http.post(`/mag/tasks/${taskId}/submit-complete`, data || {})
 }
 
-/** 待核查 → 核查中（自动失败时可手工调用） */
-export function magBeginVerifyTask(taskId) {
-  return http.post(`/mag/tasks/${taskId}/begin-verify`)
-}
-
-/** 核查结论 PASS→DONE，FAIL→IN_PROGRESS */
-export function magSubmitVerifyDecision(taskId, data) {
-  return http.post(`/mag/tasks/${taskId}/verify-decision`, data)
-}
-
-export function magListVerifications(taskId) {
-  return http.get(`/mag/tasks/${taskId}/verifications`)
-}
-
 export function magListTaskFlowEvents(taskId) {
   return http.get(`/mag/tasks/${taskId}/flow-events`)
 }
