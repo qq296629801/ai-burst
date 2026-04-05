@@ -3,7 +3,7 @@ package com.aiburst.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.aiburst.common.ApiResult;
 import com.aiburst.common.ResultCode;
-import com.aiburst.security.JwtAuthenticationFilter;
+import com.aiburst.rbac.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;

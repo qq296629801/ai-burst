@@ -8,7 +8,7 @@ import com.aiburst.llm.entity.LlmChannel;
 import com.aiburst.llm.mapper.LlmChannelMapper;
 import com.aiburst.llm.model.LlmProtocol;
 import com.aiburst.llm.model.LlmProviderMeta;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

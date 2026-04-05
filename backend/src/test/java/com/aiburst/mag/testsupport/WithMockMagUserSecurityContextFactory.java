@@ -1,6 +1,6 @@
 package com.aiburst.mag.testsupport;
 
-import com.aiburst.security.LoginPrincipal;
+import com.aiburst.rbac.security.LoginPrincipal;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;

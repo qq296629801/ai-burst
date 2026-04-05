@@ -1,10 +1,10 @@
-package com.aiburst.controller;
+package com.aiburst.rbac.controller;
 
 import com.aiburst.common.ApiResult;
 import com.aiburst.dto.PageResult;
 import com.aiburst.dto.UserPageQuery;
 import com.aiburst.dto.UserSaveRequest;
-import com.aiburst.service.SysUserService;
+import com.aiburst.rbac.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;

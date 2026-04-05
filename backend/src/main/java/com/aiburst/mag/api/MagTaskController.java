@@ -6,7 +6,7 @@ import com.aiburst.mag.dto.MagTaskBlockRequest;
 import com.aiburst.mag.dto.MagTaskCreateRequest;
 import com.aiburst.mag.dto.MagTaskRequestNextRequest;
 import com.aiburst.mag.service.MagTaskService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

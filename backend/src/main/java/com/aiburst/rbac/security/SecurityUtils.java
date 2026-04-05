@@ -1,4 +1,4 @@
-package com.aiburst.security;
+package com.aiburst.rbac.security;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;

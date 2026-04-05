@@ -7,7 +7,7 @@ import com.aiburst.mag.dto.MagPoolProductCloseRequest;
 import com.aiburst.mag.dto.MagRequirementChangeAnalyzeRequest;
 import com.aiburst.mag.dto.MagRequirementSaveRequest;
 import com.aiburst.mag.service.MagRequirementService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

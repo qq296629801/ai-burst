@@ -7,7 +7,7 @@ import com.aiburst.llm.dto.LlmChatRequest;
 import com.aiburst.llm.dto.LlmChatResponse;
 import com.aiburst.llm.entity.LlmChannel;
 import com.aiburst.llm.model.LlmProtocol;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

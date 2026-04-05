@@ -1,7 +1,7 @@
 package com.aiburst.config;
 
-import com.aiburst.entity.SysUser;
-import com.aiburst.mapper.UserMapper;
+import com.aiburst.rbac.entity.SysUser;
+import com.aiburst.rbac.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;

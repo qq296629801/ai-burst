@@ -1,12 +1,11 @@
-package com.aiburst.service;
+package com.aiburst.rbac.service;
 
 import com.aiburst.dto.PageResult;
 import com.aiburst.dto.UserPageQuery;
 import com.aiburst.dto.UserSaveRequest;
-import com.aiburst.entity.SysUser;
-import com.aiburst.mapper.UserMapper;
-import com.aiburst.rbac.service.PermissionCacheService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.entity.SysUser;
+import com.aiburst.rbac.mapper.UserMapper;
+import com.aiburst.rbac.security.SecurityUtils;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import lombok.RequiredArgsConstructor;

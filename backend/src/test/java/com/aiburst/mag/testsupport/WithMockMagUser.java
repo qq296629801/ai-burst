@@ -1,5 +1,7 @@
 package com.aiburst.mag.testsupport;
 
+import com.aiburst.rbac.security.LoginPrincipal;
+import com.aiburst.rbac.security.SecurityUtils;
 import org.springframework.security.test.context.support.WithSecurityContext;
 
 import java.lang.annotation.Retention;
@@ -10,7 +12,7 @@ import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 
 /**
- * 将 {@link com.aiburst.security.LoginPrincipal} 放入 SecurityContext，供 {@link com.aiburst.security.SecurityUtils#currentUserId()} 使用。
+ * 将 {@link LoginPrincipal} 放入 SecurityContext，供 {@link SecurityUtils#currentUserId()} 使用。
  */
 @Target({TYPE, METHOD})
 @Retention(RetentionPolicy.RUNTIME)

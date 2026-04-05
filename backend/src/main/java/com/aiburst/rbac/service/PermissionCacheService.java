@@ -1,7 +1,7 @@
 package com.aiburst.rbac.service;
 
 import com.aiburst.common.constants.AuthRedisKeys;
-import com.aiburst.mapper.UserMapper;
+import com.aiburst.rbac.mapper.UserMapper;
 import com.aiburst.rbac.mapper.PermissionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;

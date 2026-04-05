@@ -8,7 +8,7 @@ import com.aiburst.mag.dto.MagProjectCreateRequest;
 import com.aiburst.mag.dto.MagProjectUpdateRequest;
 import com.aiburst.mag.service.MagMemberService;
 import com.aiburst.mag.service.MagProjectService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

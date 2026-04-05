@@ -15,7 +15,7 @@ import com.aiburst.mag.mapper.MagProjectMapper;
 import com.aiburst.mag.mapper.MagProjectMemberMapper;
 import com.aiburst.mag.mapper.MagRequirementDocMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
 import lombok.RequiredArgsConstructor;

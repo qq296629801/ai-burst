@@ -4,7 +4,7 @@ import com.aiburst.common.ApiResult;
 import com.aiburst.mag.dto.MagImportBlueprintRequest;
 import com.aiburst.mag.dto.MagModuleUpsertRequest;
 import com.aiburst.mag.service.MagModuleService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

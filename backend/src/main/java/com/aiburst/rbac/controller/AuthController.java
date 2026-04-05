@@ -1,9 +1,9 @@
-package com.aiburst.controller;
+package com.aiburst.rbac.controller;
 
 import com.aiburst.common.ApiResult;
 import com.aiburst.dto.LoginRequest;
 import com.aiburst.dto.LoginResponse;
-import com.aiburst.service.AuthService;
+import com.aiburst.rbac.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

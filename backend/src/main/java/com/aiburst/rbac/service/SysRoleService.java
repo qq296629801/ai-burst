@@ -1,6 +1,6 @@
 package com.aiburst.rbac.service;
 
-import com.aiburst.mapper.UserMapper;
+import com.aiburst.rbac.mapper.UserMapper;
 import com.aiburst.rbac.dto.RoleSaveRequest;
 import com.aiburst.rbac.entity.SysRole;
 import com.aiburst.rbac.mapper.RoleMapper;

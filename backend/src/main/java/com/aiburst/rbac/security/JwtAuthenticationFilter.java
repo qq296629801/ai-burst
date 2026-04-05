@@ -1,4 +1,4 @@
-package com.aiburst.security;
+package com.aiburst.rbac.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.aiburst.common.ApiResult;

@@ -5,7 +5,7 @@ import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.dto.MagScheduledJobUpsertRequest;
 import com.aiburst.mag.entity.MagScheduledJobConfig;
 import com.aiburst.mag.mapper.MagScheduledJobConfigMapper;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

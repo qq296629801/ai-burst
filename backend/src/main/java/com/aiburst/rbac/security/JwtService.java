@@ -1,4 +1,4 @@
-package com.aiburst.security;
+package com.aiburst.rbac.security;
 
 import com.aiburst.config.JwtProperties;
 import io.jsonwebtoken.Claims;

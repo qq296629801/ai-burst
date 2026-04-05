@@ -1,4 +1,4 @@
-package com.aiburst.entity;
+package com.aiburst.rbac.entity;
 
 import lombok.Data;
 

@@ -2,7 +2,7 @@ package com.aiburst.mag.api;
 
 import com.aiburst.common.ApiResult;
 import com.aiburst.mag.service.MagAlertService;
-import com.aiburst.security.SecurityUtils;
+import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

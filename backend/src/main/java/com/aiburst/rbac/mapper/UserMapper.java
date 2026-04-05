@@ -1,6 +1,6 @@
-package com.aiburst.mapper;
+package com.aiburst.rbac.mapper;
 
-import com.aiburst.entity.SysUser;
+import com.aiburst.rbac.entity.SysUser;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
