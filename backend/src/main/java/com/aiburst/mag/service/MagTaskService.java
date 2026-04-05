@@ -5,11 +5,9 @@ import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.MagTaskFlowEventType;
 import com.aiburst.mag.dto.MagSubmitCompleteRequest;
-import com.aiburst.mag.dto.MagTaskBlockRequest;
 import com.aiburst.mag.dto.MagTaskCreateRequest;
 import com.aiburst.mag.dto.MagTaskDispatchRequest;
 import com.aiburst.mag.dto.MagTaskPmReassignRequest;
-import com.aiburst.mag.dto.MagTaskRequestNextRequest;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.entity.MagMessage;
 import com.aiburst.mag.entity.MagModule;
@@ -66,6 +64,7 @@ public class MagTaskService {
     private final MagTaskAutomationProperties taskAutomationProperties;
     private final MagAlertService alertService;
     private final MagCoordinationChatWriter coordinationChatWriter;
+    private final MagTaskDispatchGateService taskDispatchGateService;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -85,6 +84,10 @@ public class MagTaskService {
         t.setReporterAgentId(req.getReporterAgentId());
         t.setRequirementRef(req.getRequirementRef());
         t.setRowVersion(0);
+        if (t.getAssigneeAgentId() != null) {
+            requireAssignableAgent(projectId, t.getAssigneeAgentId());
+            taskDispatchGateService.validateAssigneeForDispatchOrReassign(projectId, t.getAssigneeAgentId());
+        }
         taskMapper.insert(t);
         Long createdId = t.getId();
         Map<String, Object> createdDetail = new LinkedHashMap<>();
@@ -117,6 +120,7 @@ public class MagTaskService {
         accessHelper.requireMember(projectId, userId);
         requireModuleInProject(projectId, req.getModuleId());
         requireAssignableAgent(projectId, req.getAssigneeAgentId());
+        taskDispatchGateService.validateAssigneeForDispatchOrReassign(projectId, req.getAssigneeAgentId());
         MagTask t = new MagTask();
         t.setProjectId(projectId);
         t.setModuleId(req.getModuleId());
@@ -174,6 +178,7 @@ public class MagTaskService {
             throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID);
         }
         requireAssignableAgent(task.getProjectId(), req.getAssigneeAgentId());
+        taskDispatchGateService.validateAssigneeForDispatchOrReassign(task.getProjectId(), req.getAssigneeAgentId());
         task.setAssigneeAgentId(req.getAssigneeAgentId());
         taskMapper.update(task);
         postCoordAssignMessage(task.getProjectId(), taskId, req.getAssigneeAgentId(), task.getTitle());
@@ -369,95 +374,58 @@ public class MagTaskService {
         }
     }
 
+    /**
+     * 产品 Agent 在<strong>已关联任务</strong>的编排中调用 {@code mag_submit_dev_requirement_candidate} 且<strong>实际写入了新版本</strong>
+     * （revisionId 非空）后调用：不依赖 Activity 结束时的最终回复是否非空，避免「已合并需求但任务仍停在进行中」。
+     */
+    public void tryAutoSubmitAfterProductRequirementMerge(
+            long taskId, long productAgentId, long actingUserId, Long newRevisionId) {
+        if (!taskAutomationProperties.isAutoSubmitCompleteOnOrchestrationSuccess()) {
+            return;
+        }
+        if (newRevisionId == null) {
+            return;
+        }
+        MagAgent agent = agentMapper.selectById(productAgentId);
+        if (agent == null || !"PRODUCT".equals(agent.getRoleType())) {
+            return;
+        }
+        MagTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return;
+        }
+        if (!MagConstants.TASK_IN_PROGRESS.equals(task.getState())) {
+            log.debug(
+                    "skip auto submit after product merge: taskId={} state={}",
+                    taskId,
+                    task.getState());
+            return;
+        }
+        if (!Objects.equals(task.getAssigneeAgentId(), productAgentId)) {
+            log.debug(
+                    "skip auto submit after product merge: taskId={} assignee={} agent={}",
+                    taskId,
+                    task.getAssigneeAgentId(),
+                    productAgentId);
+            return;
+        }
+        try {
+            submitComplete(taskId, new MagSubmitCompleteRequest(), actingUserId);
+            log.info(
+                    "MAG auto submit-complete: taskId={} projectId={} after product requirement merge (revisionId={})",
+                    taskId,
+                    task.getProjectId(),
+                    newRevisionId);
+        } catch (Exception e) {
+            log.warn(
+                    "MAG auto submit-complete after product merge failed taskId={}: {}",
+                    taskId,
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
     private static boolean hasNonEmptyOrchestrationReply(String orchestrationResultSummary) {
         return orchestrationResultSummary != null && !orchestrationResultSummary.trim().isEmpty();
-    }
-
-    @Transactional
-    public void block(Long taskId, MagTaskBlockRequest req, Long userId) {
-        MagTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(task.getProjectId(), userId);
-        if (MagConstants.TASK_DONE.equals(task.getState())) {
-            throw new MagBusinessException(MagResultCode.MAG_TASK_STATE_INVALID);
-        }
-        task.setState(MagConstants.TASK_BLOCKED);
-        task.setBlockReason(req.getReason());
-        task.setBlockedByAgentId(req.getBlockedByAgentId());
-        taskMapper.update(task);
-        long threadId = coordinationChatWriter.resolveThreadIdForCoordOrPmTask(task.getProjectId(), taskId);
-        MagMessage m = new MagMessage();
-        m.setThreadId(threadId);
-        m.setSenderType(req.getBlockedByAgentId() != null ? "AGENT" : "USER");
-        m.setSenderAgentId(req.getBlockedByAgentId());
-        try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("kind", "BLOCK");
-            payload.put("taskId", taskId);
-            payload.put("reason", req.getReason());
-            m.setContent(objectMapper.writeValueAsString(payload));
-        } catch (JsonProcessingException e) {
-            m.setContent("{\"kind\":\"BLOCK\",\"taskId\":" + taskId + "}");
-        }
-        messageMapper.insert(m);
-        boolean byAgent = req.getBlockedByAgentId() != null;
-        flowRecorder.record(
-                task.getProjectId(),
-                taskId,
-                MagTaskFlowEventType.TASK_BLOCKED,
-                byAgent ? "AGENT" : "USER",
-                req.getBlockedByAgentId(),
-                "任务阻塞",
-                Map.of("reason", req.getReason() != null ? req.getReason() : ""));
-        Map<String, Object> alertPayload = new LinkedHashMap<>();
-        alertPayload.put("reason", req.getReason() != null ? req.getReason() : "");
-        alertPayload.put("assigneeAgentId", task.getAssigneeAgentId());
-        alertPayload.put("blockedByAgentId", req.getBlockedByAgentId());
-        alertService.raise(task.getProjectId(), taskId, "TASK_BLOCKED", "WARN", alertPayload);
-    }
-
-    @Transactional
-    public void requestNext(Long taskId, MagTaskRequestNextRequest req, Long userId) {
-        MagTask task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(task.getProjectId(), userId);
-        long threadId = coordinationChatWriter.resolveThreadIdForCoordOrPmTask(task.getProjectId(), taskId);
-        MagMessage m = new MagMessage();
-        m.setThreadId(threadId);
-        m.setSenderType("AGENT");
-        m.setSenderAgentId(req.getAgentId());
-        try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("kind", "REQUEST_NEXT");
-            payload.put("taskId", taskId);
-            payload.put("agentId", req.getAgentId());
-            m.setContent(objectMapper.writeValueAsString(payload));
-        } catch (JsonProcessingException e) {
-            m.setContent("{\"kind\":\"REQUEST_NEXT\",\"taskId\":" + taskId + "}");
-        }
-        messageMapper.insert(m);
-        flowRecorder.record(
-                task.getProjectId(),
-                taskId,
-                MagTaskFlowEventType.TASK_REQUEST_NEXT,
-                "AGENT",
-                req.getAgentId(),
-                "子/执行 Agent 要活（申请下一项工作）",
-                Map.of("agentId", req.getAgentId()));
-        alertService.raise(
-                task.getProjectId(),
-                taskId,
-                "TASK_REQUEST_NEXT",
-                "WARN",
-                Map.of(
-                        "agentId",
-                        req.getAgentId(),
-                        "hint",
-                        "执行 Agent 反馈当前任务难以继续，需要协调或新派工"));
     }
 
     private void requireModuleInProject(Long projectId, Long moduleId) {

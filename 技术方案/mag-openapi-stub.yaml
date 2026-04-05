@@ -53,7 +53,7 @@ paths:
         '200':
           description: OK — data 为任务行
         '409':
-          description: 状态或数据不允许 — MAG_TASK_STATE_INVALID 等
+          description: 派工流水线校验失败 — MAG_DISPATCH_REQUIREMENT_NOT_READY（41016）、MAG_DISPATCH_PRODUCT_PIPELINE_BLOCKED（41017）、MAG_DISPATCH_TEST_BLOCKED_BY_DEV（41018）或 MAG_TASK_STATE_INVALID 等
   /api/mag/tasks/{id}/pm-reassign:
     post:
       tags: [mag-task]
@@ -64,7 +64,7 @@ paths:
         '200':
           description: OK
         '409':
-          description: 状态不允许 — MAG_TASK_STATE_INVALID
+          description: 改派目标不满足流水线 — 同 dispatch 41016–41018 或 MAG_TASK_STATE_INVALID
   /api/mag/tasks/{id}/flow-events:
     get:
       tags: [mag-task]
@@ -83,20 +83,6 @@ paths:
       responses:
         '200':
           description: OK — data 含 executionOutcome、resultSummary、orchestrationRunId、workflowId、startedAt、finishedAt 等
-  /api/mag/tasks/{id}/submit-complete:
-    post:
-      tags: [mag-task]
-      summary: 申报完成 — 进行中 → 已完成（DONE）
-      description: >
-        将进行中任务标记为已完成。系统也可在编排成功且编排最终回复非空时自动等价调用（可配置），本接口为显式人工/API 入口。
-      parameters:
-        - $ref: '#/components/parameters/TaskId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200':
-          description: OK
-        '409':
-          description: 状态不允许 / 乐观锁冲突 — 见 §19.7
 components:
   parameters:
     ProjectId:

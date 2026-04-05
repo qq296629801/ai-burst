@@ -1,6 +1,7 @@
 package com.aiburst.mag.agentscope;
 
 import com.aiburst.mag.service.MagRequirementService;
+import com.aiburst.mag.service.MagTaskService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,10 @@ public final class MagProductRequirementTools {
 
     private final long projectId;
     private final long triggerUserId;
+    /** 当前执行编排的 Agent（须与任务 assignee 一致方可自动结项） */
+    private final long agentId;
     private final MagRequirementService requirementService;
+    private final MagTaskService taskService;
 
     @Tool(
             name = "mag_read_requirement_doc",
@@ -40,6 +44,7 @@ public final class MagProductRequirementTools {
             description =
                     "根据需求文档整理「开发侧需求说明」，直接合并进需求文档新版本（无需求池）。"
                             + "summary 必填；proposedMarkdown 为建议正文（会并入 mag_requirement_revision.content）。"
+                            + "若当前编排关联了任务且写入了新版本，系统可在配置允许时自动将该任务申报为已完成。"
                             + "后续以需求文档编辑与版本列表为确认来源。")
     public String submitDevRequirementCandidate(
             @ToolParam(name = "summary", description = "一句话摘要") String summary,
@@ -55,6 +60,13 @@ public final class MagProductRequirementTools {
                     requirementService.mergeDevRequirementProposedFromAgent(
                             projectId, triggerUserId, summary, proposedMarkdown, anchorJson);
             Object revId = row.get("revisionId");
+            Long taskCtx = MagAgentRunTaskContext.get();
+            if (taskCtx != null && revId != null) {
+                long rid = revId instanceof Number ? ((Number) revId).longValue() : Long.parseLong(String.valueOf(revId));
+                if (rid > 0) {
+                    taskService.tryAutoSubmitAfterProductRequirementMerge(taskCtx, agentId, triggerUserId, rid);
+                }
+            }
             return revId != null ? "SUCCESS revisionId=" + revId : "SUCCESS (no content merge)";
         } catch (IllegalArgumentException e) {
             return "ERROR " + e.getMessage();

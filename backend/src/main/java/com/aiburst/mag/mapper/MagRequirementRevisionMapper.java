@@ -13,5 +13,7 @@ public interface MagRequirementRevisionMapper {
 
     MagRequirementRevision selectByDocAndVersion(@Param("docId") Long docId, @Param("version") int version);
 
+    MagRequirementRevision selectById(@Param("id") Long id);
+
     List<MagRequirementRevision> listByDocId(@Param("docId") Long docId);
 }

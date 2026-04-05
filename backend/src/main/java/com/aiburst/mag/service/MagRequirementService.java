@@ -164,6 +164,28 @@ public class MagRequirementService {
         return revisionMapper.listByDocId(doc.getId()).stream().map(this::revisionRow).collect(Collectors.toList());
     }
 
+    /**
+     * 单条修订全文（Markdown），用于版本列表「预览」弹窗；校验修订属于本项目需求文档。
+     */
+    public Map<String, Object> getRevision(Long projectId, Long revisionId, Long userId) {
+        accessHelper.requireMember(projectId, userId);
+        MagRequirementDoc doc = docMapper.selectByProjectId(projectId);
+        if (doc == null) {
+            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
+        }
+        MagRequirementRevision r = revisionMapper.selectById(revisionId);
+        if (r == null || !doc.getId().equals(r.getDocId())) {
+            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
+        }
+        Map<String, Object> m = new HashMap<>();
+        m.put("id", r.getId());
+        m.put("version", r.getVersion());
+        m.put("content", r.getContent() != null ? r.getContent() : "");
+        m.put("authorUserId", r.getAuthorUserId());
+        m.put("createdAt", r.getCreatedAt());
+        return m;
+    }
+
     public Map<String, Object> diffRevisions(Long projectId, int version1, int version2, Long userId) {
         accessHelper.requireMember(projectId, userId);
         MagRequirementDoc doc = docMapper.selectByProjectId(projectId);
@@ -241,8 +263,6 @@ public class MagRequirementService {
         m.put("version", r.getVersion());
         m.put("authorUserId", r.getAuthorUserId());
         m.put("createdAt", r.getCreatedAt());
-        m.put("contentPreview", r.getContent() != null && r.getContent().length() > 200
-                ? r.getContent().substring(0, 200) + "…" : r.getContent());
         return m;
     }
 

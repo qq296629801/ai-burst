@@ -1,12 +1,9 @@
 package com.aiburst.mag.api;
 
 import com.aiburst.common.ApiResult;
-import com.aiburst.mag.dto.MagSubmitCompleteRequest;
-import com.aiburst.mag.dto.MagTaskBlockRequest;
 import com.aiburst.mag.dto.MagTaskCreateRequest;
 import com.aiburst.mag.dto.MagTaskDispatchRequest;
 import com.aiburst.mag.dto.MagTaskPmReassignRequest;
-import com.aiburst.mag.dto.MagTaskRequestNextRequest;
 import com.aiburst.mag.service.MagTaskService;
 import com.aiburst.rbac.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -68,35 +65,6 @@ public class MagTaskController {
     @Operation(summary = "任务开始执行 PENDING→IN_PROGRESS")
     public ApiResult<Void> start(@PathVariable Long taskId) {
         taskService.start(taskId, SecurityUtils.currentUserId());
-        return ApiResult.ok();
-    }
-
-    @PostMapping("/tasks/{taskId}/submit-complete")
-    @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "申报完成：进行中 → 已完成（DONE）")
-    public ApiResult<Void> submitComplete(@PathVariable Long taskId,
-                                          @RequestBody(required = false) MagSubmitCompleteRequest req) {
-        if (req == null) {
-            req = new MagSubmitCompleteRequest();
-        }
-        taskService.submitComplete(taskId, req, SecurityUtils.currentUserId());
-        return ApiResult.ok();
-    }
-
-    @PostMapping("/tasks/{taskId}/block")
-    @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "结构化阻塞（写入 block 字段与协调线程消息）")
-    public ApiResult<Void> block(@PathVariable Long taskId, @Valid @RequestBody MagTaskBlockRequest req) {
-        taskService.block(taskId, req, SecurityUtils.currentUserId());
-        return ApiResult.ok();
-    }
-
-    @PostMapping("/tasks/{taskId}/request-next")
-    @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "子 Agent 要活（协调线程消息）")
-    public ApiResult<Void> requestNext(@PathVariable Long taskId,
-                                       @Valid @RequestBody MagTaskRequestNextRequest req) {
-        taskService.requestNext(taskId, req, SecurityUtils.currentUserId());
         return ApiResult.ok();
     }
 

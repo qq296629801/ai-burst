@@ -1,7 +1,9 @@
 package com.aiburst.mag.agentscope;
 
+import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.mapper.MagAgentMapper;
+import com.aiburst.mag.service.MagTaskDispatchGateService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
@@ -23,13 +25,15 @@ public final class MagMainAgentPmRequestTools {
     private final long callerAgentId;
     private final MagAgentMapper agentMapper;
     private final MagNestedAgentRunner nestedRunner;
+    private final MagTaskDispatchGateService taskDispatchGateService;
 
     @Tool(
             name = "mag_ask_pm_for_next_tasks",
             description =
                     "本子线主 Agent 专用：当子线任务已饱和、无活可分，或需要项目经理补充/调整派工与优先级时调用。"
                             + "将触发项目中项目经理（PM）Agent 的一轮编排，由其使用派工工具处理。"
-                            + "situationSummary 须说明当前进度、缺口或请求（勿为空）。")
+                            + "situationSummary 须说明当前进度、缺口或请求（勿为空）。"
+                            + "门禁：需求正文未就绪时仅 PRODUCT 主 Agent 可调；TEST 主 Agent 须待 FRONTEND/BACKEND 任务均已结项。")
     public String askPmForNextTasks(
             @ToolParam(
                             name = "situationSummary",
@@ -47,6 +51,14 @@ public final class MagMainAgentPmRequestTools {
         }
         if ("PM".equals(self.getRoleType())) {
             return "ERROR PM agent should use list_dispatchable_agents / dispatch_task directly";
+        }
+        try {
+            taskDispatchGateService.checkMainAgentMayRequestPmDispatch(projectId, callerAgentId);
+        } catch (MagBusinessException e) {
+            return "ERROR "
+                    + e.getResultCode().name()
+                    + " "
+                    + (e.getMessage() != null ? e.getMessage() : "");
         }
         List<MagAgent> all = agentMapper.selectByProjectId(projectId);
         if (all == null || all.isEmpty()) {

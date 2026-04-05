@@ -24,6 +24,10 @@
         SELECT * FROM mag_requirement_revision WHERE doc_id = #{docId} AND version = #{version} LIMIT 1
     </select>
 
+    <select id="selectById" resultMap="BaseMap">
+        SELECT * FROM mag_requirement_revision WHERE id = #{id}
+    </select>
+
     <select id="listByDocId" resultMap="BaseMap">
         SELECT * FROM mag_requirement_revision WHERE doc_id = #{docId} ORDER BY version DESC
     </select>

@@ -4,7 +4,7 @@
 > 对应产品需求：[产品/多Agent协作与项目管理产品线需求.md](../产品/多Agent协作与项目管理产品线需求.md)  
 > 关联升级决策：JDK **24**、Spring Boot **3.5+**（须官方支持 JDK 24 的 BOM）；**AgentScope Java**、**Temporal**（**Docker** 部署）、**WebSocket** 大屏、首期知识库**关键词/标签**、定时任务 **Redis 锁**；项目成员**不设**「仅负责拍板」独立角色；需求正文 **MySQL MEDIUMTEXT 落库**（首期不拆 MinIO 大对象）。
 
-> **当前代码库已移除（与下文部分章节不一致）**：表 `mag_requirement_pool_item`、`mag_release_archive`、`mag_pm_assist_record`、`mag_agent_improvement_log` 及对应 REST、`mag:pool:decide` / `mag:release:archive` 菜单权限、待办聚合、`work-outputs` 聚合、发版→`ARCHIVE_REFLOW` 知识库写入、开发/测试侧「改进日志」Agent 工具。产品工具仍可将开发需求说明**直接合并**进 `mag_requirement_revision`；任务自动申报完成以编排**非空最终回复**为条件（见 `application.yml`）。
+> **当前代码库已移除（与下文部分章节不一致）**：表 `mag_requirement_pool_item`、`mag_release_archive`、`mag_pm_assist_record`、`mag_agent_improvement_log` 及对应 REST、`mag:pool:decide` / `mag:release:archive` 菜单权限、待办聚合、`work-outputs` 聚合、发版→`ARCHIVE_REFLOW` 知识库写入、开发/测试侧「改进日志」Agent 工具。产品工具仍可将开发需求说明**直接合并**进 `mag_requirement_revision`；任务自动申报完成见 **§4.3.1**（编排成功**或**产品合并工具写入新版本）。**无**人工 `submit-complete` / `block` / `request-next` HTTP 接口。
 
 ---
 
@@ -129,7 +129,7 @@
 
 迁移规则（摘要）：`submit-complete`：`IN_PROGRESS` → `DONE`（可清空 `temporal_workflow_id`）。
 
-**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；编排**最终回复**（`result_summary` 等）**trim 后非空**即视为可自动申报（**不再**依赖改进日志表）。
+**自动申报完成（与实现对齐，可配置）**：**无**人工 `submit-complete` HTTP 接口；系统在满足规则时由应用服务 **`MagTaskService.submitComplete`** **等价写入**上述迁移（同一状态机与流程事件）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点（满足其一即可，先到者生效）**：① **编排落库成功后**（`MagOrchestrationAgentRunSucceededEvent`）：`mag_orchestration_run` 为 **AGENT**、**成功结束**，记录关联 **`task_id`**；任务 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与编排 Agent 一致；**最终回复** trim 后非空。② **产品工具合并后**（同一次 Activity 内）：`PRODUCT` Agent 调用 `mag_submit_dev_requirement_candidate` 且返回 **`revisionId` 非空**（实际写入新版本），`MagAgentRunTaskContext` 已绑定 **`task_id`**；任务 **`IN_PROGRESS`** 且指派人为该产品 Agent——立即调用 **`tryAutoSubmitAfterProductRequirementMerge`**，**不依赖**整段 ReAct 结束时的最终回复是否非空。**不提供**人工 **阻塞**、**要活** HTTP 接口。
 
 ### 4.4 项目经理协助与告警
 
@@ -277,7 +277,7 @@
 | GET/POST | `/projects/{id}/threads` | 线程 |
 | GET/POST | `/threads/{id}/messages` | 消息（触发 Agent 可由 POST message 或独立 `/run`） |
 | GET/POST | `/projects/{id}/tasks` | 任务 |
-| POST | `/tasks/{id}/submit-complete` | 执行方申报完成 → `DONE`（**显式**入口；**亦可**由系统在 §4.3.1「自动申报完成」规则满足时等价触发） |
+| （服务内） | `submitComplete` | §4.3.1 **自动**结项（无对应 REST）；**无** `block` / `request-next` REST |
 | GET/PUT | `/projects/{id}/requirement-doc` | 需求文档当前/保存新版本 |
 | GET/POST | `/projects/{id}/requirement-pool` | 需求池 |
 | POST | `/requirement-pool/{id}/decide` | 用户拍板 |
@@ -286,8 +286,6 @@
 | GET | `/dashboard/snapshot` | 大屏快照（轮询兜底，与 WS 并存可选） |
 | GET | `/todos` | 当前用户待办聚合（拍板项） |
 | GET/POST | `/projects/{id}/modules` | 功能模块树（与任务、需求锚点关联）；**产品 §5.2** |
-| POST | `/tasks/{id}/request-next` | 子 Agent **要活**（写入协作消息或事件，由 PM/主 Agent 编排消费）；**产品 §4.1** |
-| POST | `/tasks/{id}/block` | 结构化阻塞说明（写入 `block_*` + `mag_message`）；**产品 §4.3** |
 | GET | `/projects/{id}/pm-assist` | **项目经理协助记录**列表与筛选；**产品 §5.6** |
 | GET | `/projects/{id}/agents/{agentId}/improvements` | **改进日志**（可按时间分页）；**产品 §5.3** |
 | GET/PUT | `/scheduled-jobs` | **定时任务配置**（全局或 `project_id` 过滤）；**产品 §5.4** |
@@ -301,7 +299,9 @@
 
 上表中含 **§17** 新增列出的接口为**全量能力清单**组成部分；当前代码若未实现，须按迭代补齐，**不得从产品范围删除**。
 
-**OpenAPI 约定（实现期）**：SpringDoc 等暴露 `/v3/api-docs`；**分页** Query：`pageNum`（默认 1）、`pageSize`（默认 10，**上限 100**）；**错误体**沿用全局 `ApiResult`；**幂等**：`POST .../decide`、`POST .../submit-complete` 建议带 `Idempotency-Key` 头（可选，重复请求返回同一业务结果）。
+**派工流水线（与产品 §4.2 对齐，后端已实现）**：`MagTaskDispatchGateService` 在 **`POST .../tasks/dispatch`、带指派执行人的任务创建、`POST .../pm-reassign`** 中校验：① `mag_requirement_revision` 最新正文 trim 后非空前，**仅**可向 `PRODUCT` 角色 Agent 指派新任务；② 存在指派给 `PRODUCT` 且 `state ∈ {PENDING,IN_PROGRESS,BLOCKED}` 的任务时，**禁止**再向任一 `PRODUCT` Agent 新建派工；③ 向 `TEST` 指派前，须**无**上述未结项且指派给 `FRONTEND` 或 `BACKEND` 的任务。主 Agent 工具 **`mag_ask_pm_for_next_tasks`** 同步门禁（`PRODUCT` 豁免①；`TEST` 另受③约束）。失败返回 **409** 与 §19.7 码 **41016–41018**。
+
+**OpenAPI 约定（实现期）**：SpringDoc 等暴露 `/v3/api-docs`；**分页** Query：`pageNum`（默认 1）、`pageSize`（默认 10，**上限 100**）；**错误体**沿用全局 `ApiResult`；**幂等**：部分写接口可带 `Idempotency-Key` 头（可选）。
 
 ---
 
@@ -814,6 +814,9 @@ CREATE TABLE mag_scheduled_job_config (
 | 41011 | `MAG_ROW_VERSION_CONFLICT` | 409 | `row_version` 乐观锁冲突，客户端应刷新后重试 |
 | 41013 | `MAG_POOL_DECIDE_NOT_ALLOWED` | 403 | 无 `mag:pool:decide` 或不符合 `assigned_decider_user_id` 规则 |
 | 41014 | `MAG_POOL_STATE_INVALID` | 409 | 需求池项非待拍板态却调用 decide |
+| 41016 | `MAG_DISPATCH_REQUIREMENT_NOT_READY` | 409 | 需求正文未就绪却向非产品派工，或非产品主 Agent 调用 `mag_ask_pm_for_next_tasks` |
+| 41017 | `MAG_DISPATCH_PRODUCT_PIPELINE_BLOCKED` | 409 | 产品职能尚有未结项任务时再次向产品 Agent 派工 |
+| 41018 | `MAG_DISPATCH_TEST_BLOCKED_BY_DEV` | 409 | 开发职能尚有未结项任务时向测试派工，或测试主 Agent 向 PM 要活 |
 | 41020 | `MAG_TEMPORAL_START_FAILED` | 502 | 启动/信号 Workflow 失败（Temporal 不可用或参数非法） |
 | 41021 | `MAG_TEMPORAL_QUERY_TIMEOUT` | 504 | 等待 Workflow/Activity 结果超时（若暴露同步接口） |
 | 41999 | `MAG_UNKNOWN` | 500 | 未分类域错误（应记日志并迭代补码） |

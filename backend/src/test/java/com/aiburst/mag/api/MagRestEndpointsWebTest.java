@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,31 +33,9 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
 
     @Test
     @WithMockMagUser(authorities = {"mag:project:list", "mag:task:operate"})
-    void tasks_listAndBlockAndRequestNext() throws Exception {
+    void tasks_list() throws Exception {
         when(taskService.listByProject(eq(1L), anyLong())).thenReturn(List.of());
         mockMvc.perform(get("/api/mag/projects/1/tasks"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0));
-
-        mockMvc.perform(post("/api/mag/tasks/10/block")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"dep missing\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0));
-
-        mockMvc.perform(post("/api/mag/tasks/10/request-next")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"agentId\":3}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:project:list", "mag:task:operate"})
-    void tasks_submitComplete() throws Exception {
-        doNothing().when(taskService).submitComplete(eq(11L), any(), anyLong());
-        mockMvc.perform(post("/api/mag/tasks/11/submit-complete")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
     }
@@ -138,6 +115,10 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
 
         when(requirementService.listRevisions(eq(1L), anyLong())).thenReturn(List.of());
         mockMvc.perform(get("/api/mag/projects/1/requirement-doc/revisions")).andExpect(status().isOk());
+
+        when(requirementService.getRevision(eq(1L), eq(9L), anyLong()))
+                .thenReturn(Map.of("id", 9L, "version", 2, "content", "# hi"));
+        mockMvc.perform(get("/api/mag/projects/1/requirement-doc/revisions/9")).andExpect(status().isOk());
 
         when(requirementService.diffRevisions(eq(1L), eq(1), eq(2), anyLong()))
                 .thenReturn(Map.of("same", true));

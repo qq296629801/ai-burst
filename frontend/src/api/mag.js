@@ -52,22 +52,18 @@ export function magCreateTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks`, data)
 }
 
-/** 项目经理派工：创建任务并指定执行 Agent */
+/** 项目经理派工：创建任务并指定执行 Agent（流水线校验失败时 409，业务码 41016–41018） */
 export function magDispatchTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks/dispatch`, data)
 }
 
-/** 项目经理改派执行 Agent */
+/** 项目经理改派执行 Agent（目标执行人须满足与派工相同的流水线） */
 export function magPmReassignTask(taskId, data) {
   return http.post(`/mag/tasks/${taskId}/pm-reassign`, data)
 }
 
 export function magStartTask(taskId) {
   return http.post(`/mag/tasks/${taskId}/start`)
-}
-
-export function magSubmitComplete(taskId, data) {
-  return http.post(`/mag/tasks/${taskId}/submit-complete`, data || {})
 }
 
 export function magListTaskFlowEvents(taskId) {
@@ -139,14 +135,6 @@ export function magImportBlueprint(projectId, data) {
   return http.post(`/mag/projects/${projectId}/modules/import-blueprint`, data)
 }
 
-export function magTaskBlock(taskId, data) {
-  return http.post(`/mag/tasks/${taskId}/block`, data)
-}
-
-export function magTaskRequestNext(taskId, data) {
-  return http.post(`/mag/tasks/${taskId}/request-next`, data)
-}
-
 export function magListAlerts(projectId) {
   return http.get(`/mag/projects/${projectId}/alerts`)
 }
@@ -165,6 +153,10 @@ export function magUpsertScheduledJob(data) {
 
 export function magListReqRevisions(projectId) {
   return http.get(`/mag/projects/${projectId}/requirement-doc/revisions`)
+}
+
+export function magGetRequirementRevision(projectId, revisionId) {
+  return http.get(`/mag/projects/${projectId}/requirement-doc/revisions/${revisionId}`)
 }
 
 export function magReqDiff(projectId, version1, version2) {

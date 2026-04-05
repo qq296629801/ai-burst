@@ -92,10 +92,13 @@
         </el-table>
       </el-tab-pane>
       <el-tab-pane label="任务" name="tasks">
-        <div class="toolbar">
+        <div class="toolbar wrap">
           <el-button v-permission="'mag:task:dispatch'" type="primary" size="small" @click="openDispatch">
             派工
           </el-button>
+          <span class="form-hint">
+            进行中任务在关联 Agent 编排成功且系统开启自动结项时，将自动变为「已完成」；不提供人工申报完成、阻塞与要活入口。
+          </span>
         </div>
         <el-table :data="tasks" border stripe size="small" style="margin-top: 8px">
           <el-table-column prop="id" label="ID" width="72" />
@@ -109,7 +112,7 @@
               <el-tag size="small" :type="taskPhaseTagType(row.state)">{{ taskPhaseLabel(row.state) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="520">
+          <el-table-column label="操作" width="280">
             <template #default="{ row }">
               <el-button
                 v-permission="'mag:project:list'"
@@ -139,35 +142,6 @@
                 @click="startTask(row)"
               >
                 开始
-              </el-button>
-              <el-button
-                v-permission="'mag:task:operate'"
-                v-if="row.state === 'IN_PROGRESS'"
-                link
-                type="primary"
-                size="small"
-                @click="submitDone(row)"
-              >
-                申报完成
-              </el-button>
-              <el-button
-                v-permission="'mag:task:operate'"
-                v-if="row.state !== 'DONE' && row.state !== 'BLOCKED'"
-                link
-                type="warning"
-                size="small"
-                @click="openBlock(row)"
-              >
-                阻塞
-              </el-button>
-              <el-button
-                v-permission="'mag:task:operate'"
-                link
-                type="primary"
-                size="small"
-                @click="openRequestNext(row)"
-              >
-                要活
               </el-button>
             </template>
           </el-table-column>
@@ -339,7 +313,15 @@
   </el-dialog>
 
   <el-dialog v-model="dispatchDlg" title="项目经理派工" width="520px" @opened="onDispatchDlgOpened">
-    <el-form label-width="100px">
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      class="mag-dispatch-hint"
+      title="派工顺序（系统校验）"
+      description="需求正文为空时仅可派产品；产品有未结项任务时勿再派产品；派测试前须前端/后端任务均已结项。"
+    />
+    <el-form label-width="100px" class="mag-dispatch-form">
       <el-form-item label="标题" required><el-input v-model="dispatchForm.title" placeholder="任务标题" /></el-form-item>
       <el-form-item label="说明"><el-input v-model="dispatchForm.description" type="textarea" :rows="3" /></el-form-item>
       <el-form-item label="功能模块">
@@ -365,7 +347,14 @@
   </el-dialog>
 
   <el-dialog v-model="reassignDlg" title="改派执行 Agent" width="480px">
-    <el-form label-width="100px">
+    <el-alert
+      type="info"
+      :closable="false"
+      show-icon
+      class="mag-dispatch-hint"
+      title="改派目标须满足与同派工一致的流水线规则。"
+    />
+    <el-form label-width="100px" class="mag-dispatch-form">
       <el-form-item label="任务"><span>{{ reassignTask?.title }}</span></el-form-item>
       <el-form-item label="执行 Agent" required>
         <el-select v-model="reassignForm.assigneeAgentId" filterable placeholder="选择执行人" style="width: 100%">
@@ -408,35 +397,8 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="blockDlg" title="任务阻塞" width="440px">
-    <el-form label-width="100px">
-      <el-form-item label="原因" required><el-input v-model="blockForm.reason" type="textarea" :rows="3" /></el-form-item>
-      <el-form-item label="阻塞 Agent">
-        <el-input v-model.number="blockForm.blockedByAgentId" placeholder="可选" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="blockDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveBlock">确认阻塞</el-button>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="magResultMdPreviewDlg" :title="magResultMdPreviewTitle" width="720px" destroy-on-close>
+  <el-dialog v-model="magResultMdPreviewDlg" :title="magResultMdPreviewTitle" width="880px" destroy-on-close>
     <div class="mag-md-body mag-result-md-dialog-body" v-html="magResultMdPreviewRenderedHtml" />
-  </el-dialog>
-
-  <el-dialog v-model="reqNextDlg" title="要活 request-next" width="440px">
-    <el-form label-width="100px">
-      <el-form-item label="Agent" required>
-        <el-select v-model="reqNextForm.agentId" filterable style="width: 100%">
-          <el-option v-for="a in agents" :key="a.id" :label="`${a.name} (#${a.id})`" :value="a.id" />
-        </el-select>
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="reqNextDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveRequestNext">提交</el-button>
-    </template>
   </el-dialog>
 
   <el-dialog v-model="revDlg" title="需求版本" width="720px">
@@ -444,7 +406,11 @@
       <el-table-column prop="version" label="版本" width="80" />
       <el-table-column prop="authorUserId" label="作者" width="100" />
       <el-table-column prop="createdAt" label="时间" width="180" />
-      <el-table-column prop="contentPreview" label="预览" show-overflow-tooltip />
+      <el-table-column label="预览" width="100" align="center">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="openReqRevisionMarkdownPreview(row)">预览</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-dialog>
 
@@ -653,7 +619,6 @@ import {
   magDispatchTask,
   magPmReassignTask,
   magStartTask,
-  magSubmitComplete,
   magGetRequirementDoc,
   magSaveRequirementDoc,
   magListThreads,
@@ -663,13 +628,12 @@ import {
   magUpdateModule,
   magDeleteModule,
   magImportBlueprint,
-  magTaskBlock,
-  magTaskRequestNext,
   magListAlerts,
   magAckAlert,
   magListScheduledJobs,
   magUpsertScheduledJob,
   magListReqRevisions,
+  magGetRequirementRevision,
   magReqDiff,
   magReqAnalyzeChange,
   magListMessages,
@@ -758,9 +722,6 @@ const moduleEditId = ref(null)
 const moduleForm = ref({ name: '', parentId: 0, tag: '', sortOrder: 0 })
 const blueprintDlg = ref(false)
 const blueprintForm = ref({ sourceType: 'KB', sourceId: null })
-const blockDlg = ref(false)
-const blockTask = ref(null)
-const blockForm = ref({ reason: '', blockedByAgentId: null })
 
 const magResultMdPreviewRenderedHtml = computed(() => {
   const s = magResultMdPreviewMarkdown.value
@@ -776,9 +737,6 @@ function openResultMarkdownPreview(title, markdown) {
   magResultMdPreviewDlg.value = true
 }
 
-const reqNextDlg = ref(false)
-const reqNextTask = ref(null)
-const reqNextForm = ref({ agentId: null })
 const revDlg = ref(false)
 const analyzeDlg = ref(false)
 const analyzeForm = ref({ changeSummary: '' })
@@ -1261,12 +1219,6 @@ async function startTask(row) {
   loadTasks()
 }
 
-async function submitDone(row) {
-  await magSubmitComplete(row.id, { rowVersion: row.rowVersion })
-  ElMessage.success('已申报完成')
-  loadTasks()
-}
-
 async function saveReq() {
   await magSaveRequirementDoc(projectId.value, { content: reqContent.value })
   ElMessage.success('已保存')
@@ -1339,46 +1291,21 @@ async function saveBlueprint() {
   loadModules()
 }
 
-function openBlock(row) {
-  blockTask.value = row
-  blockForm.value = { reason: '', blockedByAgentId: null }
-  blockDlg.value = true
-}
-
-async function saveBlock() {
-  if (!blockForm.value.reason.trim()) return
-  await magTaskBlock(blockTask.value.id, {
-    reason: blockForm.value.reason,
-    blockedByAgentId: blockForm.value.blockedByAgentId || null,
-  })
-  ElMessage.success('已标记阻塞')
-  blockDlg.value = false
-  loadTasks()
-}
-
-async function openRequestNext(row) {
-  if (!agents.value.length) {
-    await loadAgents()
-  }
-  reqNextTask.value = row
-  reqNextForm.value = { agentId: agents.value[0]?.id ?? null }
-  reqNextDlg.value = true
-}
-
-async function saveRequestNext() {
-  if (!reqNextForm.value.agentId) {
-    ElMessage.warning('请选择 Agent')
-    return
-  }
-  await magTaskRequestNext(reqNextTask.value.id, { agentId: reqNextForm.value.agentId })
-  ElMessage.success('已写入协调线程')
-  reqNextDlg.value = false
-}
-
 async function openRevisions() {
   const res = await magListReqRevisions(projectId.value)
   revisions.value = res.data
   revDlg.value = true
+}
+
+async function openReqRevisionMarkdownPreview(row) {
+  if (row?.id == null) return
+  try {
+    const res = await magGetRequirementRevision(projectId.value, row.id)
+    const md = res.data?.content != null ? String(res.data.content) : ''
+    openResultMarkdownPreview(`需求文档 v${row.version} · Markdown`, md)
+  } catch {
+    ElMessage.warning('加载该版本正文失败')
+  }
 }
 
 async function loadDiff() {
@@ -1636,6 +1563,9 @@ async function runAgentRow(row) {
 </script>
 
 <style scoped>
+.mag-dispatch-hint {
+  margin-bottom: 12px;
+}
 .head {
   margin-bottom: 16px;
 }

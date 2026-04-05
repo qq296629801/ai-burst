@@ -25,20 +25,17 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     expect(http.post).toHaveBeenCalledWith('/mag/projects', { name: 'P' })
   })
 
-  it('成员与任务', async () => {
+  it('成员', async () => {
     await mag.magListMembers(3)
     expect(http.get).toHaveBeenCalledWith('/mag/projects/3/members')
-
-    await mag.magTaskBlock(9, { reason: 'x' })
-    expect(http.post).toHaveBeenCalledWith('/mag/tasks/9/block', { reason: 'x' })
-
-    await mag.magTaskRequestNext(9, { agentId: 2 })
-    expect(http.post).toHaveBeenCalledWith('/mag/tasks/9/request-next', { agentId: 2 })
   })
 
   it('需求文档与变更分析', async () => {
     await mag.magGetRequirementDoc(1)
     expect(http.get).toHaveBeenCalledWith('/mag/projects/1/requirement-doc')
+
+    await mag.magGetRequirementRevision(1, 9)
+    expect(http.get).toHaveBeenCalledWith('/mag/projects/1/requirement-doc/revisions/9')
 
     await mag.magReqDiff(1, 1, 2)
     expect(http.get).toHaveBeenCalledWith('/mag/projects/1/requirement-doc/diff', {
@@ -72,11 +69,6 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
 
     await mag.magRunAgent(4)
     expect(http.post).toHaveBeenCalledWith('/mag/agents/4/run', {})
-  })
-
-  it('任务申报完成 submit-complete', async () => {
-    await mag.magSubmitComplete(11, { rowVersion: 2 })
-    expect(http.post).toHaveBeenCalledWith('/mag/tasks/11/submit-complete', { rowVersion: 2 })
   })
 
   it('大屏、定时任务与编排', async () => {

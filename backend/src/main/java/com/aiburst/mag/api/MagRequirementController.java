@@ -47,9 +47,17 @@ public class MagRequirementController {
 
     @GetMapping("/projects/{projectId}/requirement-doc/revisions")
     @PreAuthorize("hasAuthority('mag:project:list')")
-    @Operation(summary = "需求文档版本列表")
+    @Operation(summary = "需求文档版本列表（元数据；正文见单条修订接口）")
     public ApiResult<List<Map<String, Object>>> listRevisions(@PathVariable Long projectId) {
         return ApiResult.ok(requirementService.listRevisions(projectId, SecurityUtils.currentUserId()));
+    }
+
+    @GetMapping("/projects/{projectId}/requirement-doc/revisions/{revisionId}")
+    @PreAuthorize("hasAuthority('mag:project:list')")
+    @Operation(summary = "需求文档指定版本全文（Markdown）")
+    public ApiResult<Map<String, Object>> getRevision(@PathVariable Long projectId,
+                                                      @PathVariable Long revisionId) {
+        return ApiResult.ok(requirementService.getRevision(projectId, revisionId, SecurityUtils.currentUserId()));
     }
 
     @GetMapping("/projects/{projectId}/requirement-doc/diff")
