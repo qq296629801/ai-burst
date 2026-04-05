@@ -48,8 +48,23 @@ export function magListTasks(projectId) {
   return http.get(`/mag/projects/${projectId}/tasks`)
 }
 
+/** 聚合：改进日志 + 需求池 + 需求文档版本（Agent 产出物） */
+export function magListWorkOutputs(projectId, params) {
+  return http.get(`/mag/projects/${projectId}/work-outputs`, { params })
+}
+
 export function magCreateTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks`, data)
+}
+
+/** 项目经理派工：创建任务并指定执行 Agent */
+export function magDispatchTask(projectId, data) {
+  return http.post(`/mag/projects/${projectId}/tasks/dispatch`, data)
+}
+
+/** 项目经理改派执行 Agent */
+export function magPmReassignTask(taskId, data) {
+  return http.post(`/mag/tasks/${taskId}/pm-reassign`, data)
 }
 
 export function magStartTask(taskId) {
@@ -60,8 +75,22 @@ export function magSubmitComplete(taskId, data) {
   return http.post(`/mag/tasks/${taskId}/submit-complete`, data || {})
 }
 
+/** 待核查 → 核查中（自动失败时可手工调用） */
+export function magBeginVerifyTask(taskId) {
+  return http.post(`/mag/tasks/${taskId}/begin-verify`)
+}
+
+/** 核查结论 PASS→DONE，FAIL→IN_PROGRESS */
+export function magSubmitVerifyDecision(taskId, data) {
+  return http.post(`/mag/tasks/${taskId}/verify-decision`, data)
+}
+
 export function magListVerifications(taskId) {
   return http.get(`/mag/tasks/${taskId}/verifications`)
+}
+
+export function magListTaskFlowEvents(taskId) {
+  return http.get(`/mag/tasks/${taskId}/flow-events`)
 }
 
 export function magListThreads(projectId) {
@@ -226,6 +255,6 @@ export function magRunThread(threadId) {
   return http.post(`/mag/threads/${threadId}/run`)
 }
 
-export function magRunAgent(agentId) {
-  return http.post(`/mag/agents/${agentId}/run`)
+export function magRunAgent(agentId, data) {
+  return http.post(`/mag/agents/${agentId}/run`, data ?? {})
 }

@@ -4,6 +4,8 @@ import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.entity.MagAlertEvent;
 import com.aiburst.mag.mapper.MagAlertEventMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +21,33 @@ public class MagAlertService {
 
     private final MagAlertEventMapper alertEventMapper;
     private final MagAccessHelper accessHelper;
+    private final ObjectMapper objectMapper;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
         return alertEventMapper.selectByProjectId(projectId).stream().map(this::toRow).collect(Collectors.toList());
+    }
+
+    /**
+     * 写入告警事件（无需当前用户上下文），供大屏/告警列表消费。
+     */
+    @Transactional
+    public void raise(Long projectId, Long taskId, String alertType, String level, Map<String, Object> payload) {
+        MagAlertEvent e = new MagAlertEvent();
+        e.setProjectId(projectId);
+        e.setTaskId(taskId);
+        e.setAlertType(alertType);
+        e.setLevel(level != null ? level : "WARN");
+        try {
+            e.setPayloadJson(
+                    payload == null || payload.isEmpty()
+                            ? "{}"
+                            : objectMapper.writeValueAsString(payload));
+        } catch (JsonProcessingException ex) {
+            e.setPayloadJson("{\"error\":\"payload_json\"}");
+        }
+        e.setAcknowledged(0);
+        alertEventMapper.insert(e);
     }
 
     @Transactional

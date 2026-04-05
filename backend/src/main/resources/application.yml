@@ -35,7 +35,26 @@ aiburst:
   mag:
     agentscope:
       max-iters: 4
+      pm-max-iters: 10
       call-timeout-seconds: 120
+      # AgentScope 会话落盘目录：按 p{projectId}/a{agentId} 隔离，禁止跨项目复用
+      session-root: ${java.io.tmpdir}/mag-agent-sessions
+      a2a-max-depth: 5
+      # 根级 Agent 编排单线程 FIFO 排队依次执行（嵌套 A2A 不入队）；多 Worker 进程时每个进程各有一条队列
+      serial-agent-run: true
+      serial-queue-timeout-seconds: 600
+    mcp:
+      enabled: false
+      # 启用后通过 SSE 连接 MCP Server，工具并入各职能 Agent 的 Toolkit（由大模型调度）
+      sse-url: ""
+    skills:
+      enabled: true
+      classpath-root: mag-skills
+    task:
+      # 派工（及「待处理」态改派）后自动提交执行 Agent 编排，编排受理成功后将任务置为进行中
+      auto-start-on-dispatch: true
+      # 申报完成进入待核查后，自动进入核查中并触发 VERIFY Agent 编排（无 VERIFY Agent 时仅告警，可人工核查）
+      auto-verify-on-submit-complete: true
     temporal:
       # 已开启：触发「Agent/线程编排」会探测 127.0.0.1:7233；请先执行 docker compose -f docker-compose.temporal.yml up -d
       enabled: true

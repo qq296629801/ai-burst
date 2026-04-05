@@ -11,6 +11,8 @@ public class MagOrchestrationRun {
     private String runKind;
     private Long agentId;
     private Long threadId;
+    /** 派工自动执行等场景关联的任务 */
+    private Long taskId;
     private String workflowId;
     private String status;
     private String message;

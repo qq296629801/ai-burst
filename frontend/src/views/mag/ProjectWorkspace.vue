@@ -93,16 +93,43 @@
       </el-tab-pane>
       <el-tab-pane label="任务" name="tasks">
         <div class="toolbar">
-          <el-button v-permission="'mag:task:operate'" type="primary" size="small" @click="openTask">
-            新建任务
+          <el-button v-permission="'mag:task:dispatch'" type="primary" size="small" @click="openDispatch">
+            派工
           </el-button>
         </div>
         <el-table :data="tasks" border stripe size="small" style="margin-top: 8px">
           <el-table-column prop="id" label="ID" width="72" />
           <el-table-column prop="title" label="标题" />
-          <el-table-column prop="state" label="状态" width="140" />
-          <el-table-column label="操作" width="280">
+          <el-table-column label="执行 Agent" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">{{ assigneeAgentLabel(row.assigneeAgentId) }}</template>
+          </el-table-column>
+          <el-table-column prop="state" label="状态" width="120" />
+          <el-table-column label="流程阶段" width="120">
             <template #default="{ row }">
+              <el-tag size="small" :type="taskPhaseTagType(row.state)">{{ taskPhaseLabel(row.state) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="520">
+            <template #default="{ row }">
+              <el-button
+                v-permission="'mag:project:list'"
+                link
+                type="info"
+                size="small"
+                @click="openTaskFlow(row)"
+              >
+                流程
+              </el-button>
+              <el-button
+                v-permission="'mag:task:dispatch'"
+                v-if="row.state === 'PENDING' || row.state === 'IN_PROGRESS' || row.state === 'BLOCKED'"
+                link
+                type="primary"
+                size="small"
+                @click="openReassign(row)"
+              >
+                改派
+              </el-button>
               <el-button
                 v-permission="'mag:task:operate'"
                 v-if="row.state === 'PENDING'"
@@ -125,6 +152,26 @@
               </el-button>
               <el-button
                 v-permission="'mag:task:operate'"
+                v-if="row.state === 'PENDING_VERIFY' || row.state === 'VERIFYING'"
+                link
+                type="success"
+                size="small"
+                @click="openVerify(row)"
+              >
+                核查裁定
+              </el-button>
+              <el-button
+                v-permission="'mag:task:operate'"
+                v-if="row.state === 'PENDING_VERIFY'"
+                link
+                type="info"
+                size="small"
+                @click="beginVerifyOnly(row)"
+              >
+                进入核查中
+              </el-button>
+              <el-button
+                v-permission="'mag:task:operate'"
                 v-if="row.state !== 'DONE' && row.state !== 'BLOCKED'"
                 link
                 type="warning"
@@ -142,6 +189,44 @@
               >
                 要活
               </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+      <el-tab-pane label="产出物" name="workOutputs">
+        <div class="toolbar">
+          <el-button size="small" @click="loadWorkOutputs">刷新</el-button>
+          <span class="form-hint" style="margin-left: 8px">
+            聚合 Agent 工具落库的改进日志（开发实现说明、测试计划等）、产品提交的需求池候选、需求文档各版本摘要。
+          </span>
+        </div>
+        <el-table :data="workOutputs" border stripe size="small" style="margin-top: 8px" max-height="520">
+          <el-table-column prop="occurredAt" label="时间" width="170" />
+          <el-table-column label="类型" width="140">
+            <template #default="{ row }">
+              <el-tag size="small" :type="workOutputKindTagType(row.kind)">{{ workOutputKindLabel(row.kind) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="来源" min-width="160" show-overflow-tooltip>
+            <template #default="{ row }">
+              <template v-if="row.kind === 'IMPROVEMENT'">
+                {{ row.agentName || '—' }}（{{ row.agentRoleType || '—' }}）#{{ row.agentId }}
+              </template>
+              <template v-else-if="row.kind === 'REQUIREMENT_POOL'">需求池 · 产品候选</template>
+              <template v-else-if="row.kind === 'REQUIREMENT_DOC'">
+                需求文档 v{{ row.revisionVersion }} · 用户 #{{ row.authorUserId }}
+              </template>
+              <template v-else>—</template>
+            </template>
+          </el-table-column>
+          <el-table-column prop="changeType" label="子类型" width="160" show-overflow-tooltip />
+          <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
+          <el-table-column label="池状态" width="100">
+            <template #default="{ row }">{{ row.state || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="88" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="openWorkOutputDetail(row)">全文</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -412,14 +497,49 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="taskDlg" title="任务" width="480px">
-    <el-form label-width="72px">
-      <el-form-item label="标题" required><el-input v-model="taskForm.title" /></el-form-item>
-      <el-form-item label="说明"><el-input v-model="taskForm.description" type="textarea" :rows="3" /></el-form-item>
+  <el-dialog v-model="dispatchDlg" title="项目经理派工" width="520px" @opened="onDispatchDlgOpened">
+    <el-form label-width="100px">
+      <el-form-item label="标题" required><el-input v-model="dispatchForm.title" placeholder="任务标题" /></el-form-item>
+      <el-form-item label="说明"><el-input v-model="dispatchForm.description" type="textarea" :rows="3" /></el-form-item>
+      <el-form-item label="功能模块">
+        <el-select v-model="dispatchForm.moduleId" clearable filterable placeholder="可选" style="width: 100%">
+          <el-option v-for="mod in modules" :key="mod.id" :label="moduleOptionLabel(mod)" :value="mod.id" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="执行 Agent" required>
+        <el-select v-model="dispatchForm.assigneeAgentId" filterable placeholder="选择执行人" style="width: 100%">
+          <el-option
+            v-for="a in dispatchableAgents"
+            :key="a.id"
+            :label="`${a.name} (#${a.id}) · ${agentRoleLabel(a.roleType)}`"
+            :value="a.id"
+          />
+        </el-select>
+      </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="taskDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveTask">保存</el-button>
+      <el-button @click="dispatchDlg = false">取消</el-button>
+      <el-button type="primary" @click="saveDispatch">确认派工</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="reassignDlg" title="改派执行 Agent" width="480px">
+    <el-form label-width="100px">
+      <el-form-item label="任务"><span>{{ reassignTask?.title }}</span></el-form-item>
+      <el-form-item label="执行 Agent" required>
+        <el-select v-model="reassignForm.assigneeAgentId" filterable placeholder="选择执行人" style="width: 100%">
+          <el-option
+            v-for="a in dispatchableAgents"
+            :key="a.id"
+            :label="`${a.name} (#${a.id}) · ${agentRoleLabel(a.roleType)}`"
+            :value="a.id"
+          />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="reassignDlg = false">取消</el-button>
+      <el-button type="primary" @click="saveReassign">确认改派</el-button>
     </template>
   </el-dialog>
 
@@ -476,6 +596,50 @@
     <template #footer>
       <el-button @click="blockDlg = false">取消</el-button>
       <el-button type="primary" @click="saveBlock">确认阻塞</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="workOutputDetailDlg" title="产出物全文" width="720px" destroy-on-close>
+    <div v-if="workOutputDetail" class="work-output-detail-head">
+      <el-tag size="small" :type="workOutputKindTagType(workOutputDetail.kind)">
+        {{ workOutputKindLabel(workOutputDetail.kind) }}
+      </el-tag>
+      <span class="work-output-detail-meta">{{ workOutputDetail.summary }}</span>
+    </div>
+    <pre v-if="workOutputDetail" class="work-output-detail-body">{{ workOutputDetailBody }}</pre>
+  </el-dialog>
+
+  <el-dialog v-model="verifyDlg" title="核查裁定" width="520px" destroy-on-close>
+    <p v-if="verifyTask" class="form-hint">
+      任务 #{{ verifyTask.id }} · {{ verifyTask.state }}。PASS 结项（DONE），FAIL 退回执行中（IN_PROGRESS）。
+    </p>
+    <el-form label-width="112px" style="margin-top: 8px">
+      <el-form-item label="核查 Agent" required>
+        <el-select v-model="verifyForm.verifierAgentId" filterable placeholder="须为 VERIFY 角色" style="width: 100%">
+          <el-option
+            v-for="a in verifyAgentOptions"
+            :key="a.id"
+            :label="`${a.name} (#${a.id})`"
+            :value="a.id"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="结论" required>
+        <el-radio-group v-model="verifyForm.result">
+          <el-radio-button label="PASS">通过 PASS</el-radio-button>
+          <el-radio-button label="FAIL">不通过 FAIL</el-radio-button>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item label="依据说明" required>
+        <el-input v-model="verifyForm.rationale" type="textarea" :rows="4" placeholder="核查结论与依据" />
+      </el-form-item>
+      <el-form-item label="证据摘要">
+        <el-input v-model="verifyForm.evidenceSummary" type="textarea" :rows="2" placeholder="可选" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="verifyDlg = false">取消</el-button>
+      <el-button type="primary" @click="saveVerifyDecision">提交裁定</el-button>
     </template>
   </el-dialog>
 
@@ -571,22 +735,147 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="threadDlg" :title="threadRoomTitle" width="640px" @opened="onThreadDlgOpened">
-    <div class="toolbar wrap" style="margin-bottom: 8px">
-      <el-input v-model="threadMsg.content" type="textarea" :rows="2" placeholder="发送 USER 消息内容" style="flex: 1" />
-      <el-button v-permission="'mag:task:operate'" type="primary" size="small" @click="postThreadMsg">发送</el-button>
-    </div>
-    <el-scrollbar max-height="320">
-      <div v-for="m in threadMessages" :key="m.id" class="msg-line">
-        <span class="who">{{ m.senderType }}</span>
-        <span class="body">{{ m.content }}</span>
+  <el-dialog v-model="flowDlg" title="任务流程走向" width="920px" destroy-on-close align-center @opened="onFlowDlgOpened">
+    <div v-if="flowTask" class="flow-task-head">
+      <span>任务 #{{ flowTask.id }} · {{ flowTask.title }}</span>
+      <div class="flow-task-head-tags">
+        <el-tag size="small" type="info">{{ flowTask.state }}</el-tag>
+        <el-tag size="small" :type="taskPhaseTagType(flowTask.state)">{{ taskPhaseLabel(flowTask.state) }}</el-tag>
       </div>
-    </el-scrollbar>
+    </div>
+    <el-tabs v-model="flowTab" @tab-change="onFlowTabChange">
+      <el-tab-pane label="流程图" name="chart">
+        <p class="flow-hint">
+          下图按<strong>项目经理派工 → 执行方干活 → 申报与核查</strong>展示标准走向；<strong>橙色高亮</strong>为当前所处环节。下方为系统已记录的实际事件链。
+        </p>
+        <el-steps
+          class="task-flow-steps"
+          :active="taskPipelineStepActive"
+          finish-status="success"
+          :process-status="flowTask?.state === 'BLOCKED' ? 'error' : 'process'"
+          align-center
+        >
+          <el-step title="派工落地" description="PM / PM Agent 指定执行人" />
+          <el-step title="待开始 → 执行中" description="执行方点击「开始」后进入干活" />
+          <el-step title="申报完成" description="提交待核查" />
+          <el-step title="结项" description="核查通过后完成" />
+        </el-steps>
+        <el-alert
+          v-if="flowTask?.state === 'BLOCKED'"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="flow-block-alert"
+          title="当前任务处于阻塞状态，解除后请继续从「执行中」推进。"
+        />
+        <div class="flow-chart-caption flow-chart-caption-main">标准流程走向（当前位置高亮）</div>
+        <div ref="mmdPipelineEl" class="mermaid-host mermaid-host-main" />
+        <div class="flow-chart-caption">已发生事件串联（审计明细）</div>
+        <div ref="mmdChainEl" class="mermaid-host" />
+      </el-tab-pane>
+      <el-tab-pane label="时间线" name="timeline">
+        <el-empty v-if="!flowEvents.length" description="暂无流程事件（派工/开始/阻塞等操作后会记录）" />
+        <el-timeline v-else>
+          <el-timeline-item v-for="e in flowEvents" :key="e.id" :timestamp="formatFlowTime(e.createdAt)" placement="top">
+            <div class="flow-ev-title">{{ flowEventTitle(e.eventType) }}</div>
+            <div class="flow-ev-sum">{{ e.summary || '—' }}</div>
+            <div class="flow-ev-meta">
+              行为体 {{ e.actorType || '—' }}
+              <template v-if="e.actorAgentId != null"> · Agent #{{ e.actorAgentId }}</template>
+            </div>
+            <pre v-if="e.detailJson" class="flow-detail">{{ formatFlowDetailJson(e.detailJson) }}</pre>
+          </el-timeline-item>
+        </el-timeline>
+      </el-tab-pane>
+      <el-tab-pane label="核查记录" name="verifications">
+        <el-button size="small" style="margin-bottom: 8px" @click="loadFlowVerifications">刷新</el-button>
+        <el-empty v-if="!flowVerifications.length" description="尚无 mag_task_verification 记录（提交核查裁定后会出现）" />
+        <el-table v-else :data="flowVerifications" border size="small" max-height="360">
+          <el-table-column prop="id" label="ID" width="72" />
+          <el-table-column prop="result" label="结果" width="88" />
+          <el-table-column label="核查 Agent" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ magAgentName(row.verifierAgentId) }} (#{{ row.verifierAgentId }})</template>
+          </el-table-column>
+          <el-table-column prop="rationale" label="依据" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="evidenceSummary" label="证据摘要" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="createdAt" label="时间" width="170" />
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
+  </el-dialog>
+
+  <el-dialog v-model="threadDlg" :title="threadRoomTitle" width="720px" @opened="onThreadDlgOpened">
+    <div class="thread-chat">
+      <div ref="threadChatScrollRef" class="thread-chat-messages">
+        <div v-if="!threadMessages.length" class="thread-chat-empty">暂无消息，可在下方发送 USER 消息。</div>
+        <div
+          v-for="m in threadMessages"
+          :key="m.id"
+          class="thread-chat-row"
+          :class="{
+            'is-user': threadMessageIsUser(m),
+            'is-agent': threadMessageIsAgent(m),
+            'is-system': threadMessageIsSystem(m),
+          }"
+        >
+          <template v-if="threadMessageIsUser(m)">
+            <div class="thread-chat-main user">
+              <div class="thread-chat-bubble user">
+                <template v-if="m.displayLines">
+                  <div v-for="(line, idx) in m.displayLines" :key="idx" class="thread-chat-line">{{ line }}</div>
+                </template>
+                <template v-else>{{ m.content }}</template>
+              </div>
+              <div class="thread-chat-foot user">
+                <span class="thread-chat-label">我</span>
+                <span v-if="m.createdAt" class="thread-chat-time">{{ formatFlowTime(m.createdAt) }}</span>
+              </div>
+            </div>
+          </template>
+          <template v-else-if="threadMessageIsAgent(m)">
+            <div class="thread-chat-avatar agent" :title="threadSenderMeta(m).title">
+              {{ threadAvatarLetter(m) }}
+            </div>
+            <div class="thread-chat-main">
+              <div class="thread-chat-head">
+                <span class="thread-chat-name">{{ threadSenderMeta(m).title }}</span>
+                <el-tag type="success" size="small" effect="plain">Agent</el-tag>
+                <span v-if="m.senderAgentId != null" class="thread-chat-id">#{{ m.senderAgentId }}</span>
+                <span v-if="threadSenderMeta(m).subtitle" class="thread-chat-role">{{ threadSenderMeta(m).subtitle }}</span>
+              </div>
+              <div class="thread-chat-bubble agent">
+                <template v-if="m.displayLines">
+                  <div v-for="(line, idx) in m.displayLines" :key="idx" class="thread-chat-line">{{ line }}</div>
+                </template>
+                <template v-else>{{ m.content }}</template>
+              </div>
+              <div v-if="m.createdAt" class="thread-chat-foot">
+                <span class="thread-chat-time">{{ formatFlowTime(m.createdAt) }}</span>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="thread-chat-system">
+              <span class="thread-chat-system-tag">{{ threadSenderMeta(m).title }}</span>
+              <div v-if="m.displayLines" class="thread-chat-system-lines">
+                <div v-for="(line, idx) in m.displayLines" :key="idx" class="thread-chat-line">{{ line }}</div>
+              </div>
+              <span v-else class="thread-chat-system-body">{{ m.content }}</span>
+              <span v-if="m.createdAt" class="thread-chat-time">{{ formatFlowTime(m.createdAt) }}</span>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="thread-chat-composer">
+        <el-input v-model="threadMsg.content" type="textarea" :rows="2" placeholder="发送 USER 消息内容" />
+        <el-button v-permission="'mag:task:operate'" type="primary" @click="postThreadMsg">发送</el-button>
+      </div>
+    </div>
   </el-dialog>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -597,9 +886,14 @@ import {
   magCreateAgent,
   magUpdateAgent,
   magListTasks,
-  magCreateTask,
+  magListWorkOutputs,
+  magDispatchTask,
+  magPmReassignTask,
   magStartTask,
   magSubmitComplete,
+  magBeginVerifyTask,
+  magSubmitVerifyDecision,
+  magListVerifications,
   magGetRequirementDoc,
   magSaveRequirementDoc,
   magListRequirementPool,
@@ -633,6 +927,7 @@ import {
   magRunThread,
   magRunAgent,
   magListOrchestrationRuns,
+  magListTaskFlowEvents,
 } from '@/api/mag'
 import { fetchLlmChannels } from '@/api/llm'
 import { useMagWebSocket } from '@/composables/useMagWebSocket'
@@ -662,6 +957,23 @@ const diffV1 = ref(1)
 const diffV2 = ref(2)
 const diffText = ref('')
 const orchestrationRuns = ref([])
+const workOutputs = ref([])
+const workOutputDetailDlg = ref(false)
+const workOutputDetail = ref(null)
+
+const dispatchableAgents = computed(() => (agents.value || []).filter((a) => a.roleType !== 'VERIFY'))
+
+const verifyAgentOptions = computed(() => (agents.value || []).filter((a) => a.roleType === 'VERIFY'))
+
+/** 与 el-steps 四步对齐：派工完成=0 已过；待开始/干活=1；申报核查=2；结项=3；DONE 时 active=4 表示全部完成 */
+const taskPipelineStepActive = computed(() => {
+  const s = flowTask.value?.state
+  if (!s) return 0
+  if (s === 'DONE') return 4
+  if (s === 'PENDING_VERIFY' || s === 'VERIFYING') return 2
+  if (s === 'PENDING' || s === 'IN_PROGRESS' || s === 'BLOCKED') return 1
+  return 0
+})
 
 const agentRoleOptions = [
   { value: 'PM', label: 'PM' },
@@ -689,8 +1001,32 @@ const agentDlg = ref(false)
 const agentEditingId = ref(null)
 const llmChannels = ref([])
 const agentForm = ref({ roleType: 'BACKEND', name: '', llmChannelId: null })
-const taskDlg = ref(false)
-const taskForm = ref({ title: '', description: '' })
+const dispatchDlg = ref(false)
+const dispatchForm = ref({ title: '', description: '', moduleId: null, assigneeAgentId: null })
+const reassignDlg = ref(false)
+const reassignTask = ref(null)
+const reassignForm = ref({ assigneeAgentId: null })
+const flowDlg = ref(false)
+const flowTask = ref(null)
+const flowEvents = ref([])
+const flowVerifications = ref([])
+const flowTab = ref('chart')
+const mmdChainEl = ref(null)
+const mmdPipelineEl = ref(null)
+
+const FLOW_EVENT_LABELS = {
+  TASK_CREATED: '创建任务',
+  TASK_DISPATCHED: '派工（PM/真人/PM Agent 工具）',
+  TASK_PM_REASSIGNED: '改派执行 Agent',
+  TASK_STARTED: '开始干活',
+  TASK_SUBMIT_COMPLETE: '申报完成',
+  TASK_BLOCKED: '阻塞',
+  TASK_REQUEST_NEXT: '要活（申领下一项）',
+  TASK_VERIFYING_STARTED: '进入核查中',
+  TASK_VERIFICATION_PASS: '核查通过（结项）',
+  TASK_VERIFICATION_FAIL: '核查不通过（退回执行）',
+}
+
 const relDlg = ref(false)
 const relForm = ref({ versionLabel: '', snapshotJson: '{}', qualityFlag: 0 })
 const moduleDlg = ref(false)
@@ -701,6 +1037,22 @@ const blueprintForm = ref({ sourceType: 'ARCHIVE', sourceId: null })
 const blockDlg = ref(false)
 const blockTask = ref(null)
 const blockForm = ref({ reason: '', blockedByAgentId: null })
+const workOutputDetailBody = computed(() => {
+  const b = workOutputDetail.value?.body
+  if (b == null) return ''
+  return typeof b === 'string' ? b : JSON.stringify(b, null, 2)
+})
+
+const verifyDlg = ref(false)
+const verifyTask = ref(null)
+const verifyForm = ref({
+  verifierAgentId: null,
+  result: 'PASS',
+  rationale: '',
+  evidenceSummary: '',
+  rowVersion: null,
+})
+
 const reqNextDlg = ref(false)
 const reqNextTask = ref(null)
 const reqNextForm = ref({ agentId: null })
@@ -727,6 +1079,7 @@ const threadRoom = ref(null)
 const threadRoomTitle = computed(() => (threadRoom.value ? `线程 #${threadRoom.value.id}` : '线程'))
 const threadMessages = ref([])
 const threadMsg = ref({ content: '' })
+const threadChatScrollRef = ref(null)
 
 async function refreshAll() {
   const pid = projectId.value
@@ -767,6 +1120,41 @@ async function loadOrchestrationRuns() {
   if (!pid) return
   const res = await magListOrchestrationRuns(pid, { limit: 50 })
   orchestrationRuns.value = res.data || []
+}
+
+async function loadWorkOutputs() {
+  const pid = projectId.value
+  if (!pid) return
+  try {
+    const res = await magListWorkOutputs(pid, {
+      improvementLimit: 400,
+      poolLimit: 200,
+      revisionLimit: 40,
+    })
+    workOutputs.value = res.data?.items || []
+  } catch {
+    workOutputs.value = []
+    ElMessage.warning('加载产出物失败')
+  }
+}
+
+function workOutputKindLabel(kind) {
+  if (kind === 'IMPROVEMENT') return '改进日志'
+  if (kind === 'REQUIREMENT_POOL') return '需求池'
+  if (kind === 'REQUIREMENT_DOC') return '需求文档'
+  return kind || '—'
+}
+
+function workOutputKindTagType(kind) {
+  if (kind === 'IMPROVEMENT') return 'primary'
+  if (kind === 'REQUIREMENT_POOL') return 'warning'
+  if (kind === 'REQUIREMENT_DOC') return 'success'
+  return 'info'
+}
+
+function openWorkOutputDetail(row) {
+  workOutputDetail.value = row
+  workOutputDetailDlg.value = true
 }
 
 function setupMagWs() {
@@ -857,11 +1245,16 @@ watch(tab, (t) => {
     loadLlmChannelsForAgent()
     loadAgents()
   }
-  if (t === 'tasks') loadTasks()
+  if (t === 'tasks') {
+    loadAgents()
+    loadModules()
+    loadTasks()
+  }
   if (t === 'pool') loadPool()
   if (t === 'releases') loadReleases()
   if (t === 'threads') loadThreads()
   if (t === 'orchRuns') loadOrchestrationRuns()
+  if (t === 'workOutputs') loadWorkOutputs()
   if (t === 'req') loadReq()
   if (t === 'modules') loadModules()
   if (t === 'alerts') loadAlerts()
@@ -936,20 +1329,305 @@ async function saveAgent() {
   loadAgents()
 }
 
-function openTask() {
-  taskForm.value = { title: '', description: '' }
-  taskDlg.value = true
+function moduleOptionLabel(mod) {
+  const p = mod.parentId ? `#${mod.parentId} · ` : ''
+  return `${p}${mod.name || ''}`
 }
 
-async function saveTask() {
-  if (!taskForm.value.title.trim()) return
-  await magCreateTask(projectId.value, {
-    title: taskForm.value.title,
-    description: taskForm.value.description,
-  })
-  ElMessage.success('已创建')
-  taskDlg.value = false
+function assigneeAgentLabel(id) {
+  if (id == null) return '—'
+  const a = agents.value.find((x) => x.id === id)
+  return a ? `${a.name} (#${a.id})` : `#${id}`
+}
+
+/** 聊天内协调载荷等场景：优先展示 MagAgent.name */
+function magAgentName(id) {
+  if (id == null) return '—'
+  const a = agents.value.find((x) => x.id === id)
+  const n = a?.name?.trim()
+  if (n) return n
+  return `Agent #${id}`
+}
+
+async function onDispatchDlgOpened() {
+  await Promise.all([loadAgents(), loadModules()])
+}
+
+function openDispatch() {
+  dispatchForm.value = { title: '', description: '', moduleId: null, assigneeAgentId: null }
+  dispatchDlg.value = true
+}
+
+async function saveDispatch() {
+  if (!dispatchForm.value.title?.trim()) {
+    ElMessage.warning('请填写标题')
+    return
+  }
+  if (dispatchForm.value.assigneeAgentId == null) {
+    ElMessage.warning('请选择执行 Agent')
+    return
+  }
+  const body = {
+    title: dispatchForm.value.title.trim(),
+    assigneeAgentId: dispatchForm.value.assigneeAgentId,
+  }
+  if (dispatchForm.value.description?.trim()) {
+    body.description = dispatchForm.value.description.trim()
+  }
+  if (dispatchForm.value.moduleId != null) {
+    body.moduleId = dispatchForm.value.moduleId
+  }
+  await magDispatchTask(projectId.value, body)
+  ElMessage.success('已派工')
+  dispatchDlg.value = false
   loadTasks()
+}
+
+function openReassign(row) {
+  reassignTask.value = row
+  reassignForm.value = { assigneeAgentId: row.assigneeAgentId ?? null }
+  reassignDlg.value = true
+}
+
+async function saveReassign() {
+  if (reassignForm.value.assigneeAgentId == null) {
+    ElMessage.warning('请选择执行 Agent')
+    return
+  }
+  await magPmReassignTask(reassignTask.value.id, { assigneeAgentId: reassignForm.value.assigneeAgentId })
+  ElMessage.success('已改派')
+  reassignDlg.value = false
+  loadTasks()
+}
+
+function flowEventTitle(type) {
+  return FLOW_EVENT_LABELS[type] || type || '—'
+}
+
+function taskPhaseLabel(state) {
+  const m = {
+    PENDING: '待开始',
+    IN_PROGRESS: '执行中',
+    BLOCKED: '阻塞',
+    PENDING_VERIFY: '待核查',
+    VERIFYING: '核查中',
+    DONE: '已完成',
+  }
+  return m[state] || state || '—'
+}
+
+function taskPhaseTagType(state) {
+  if (state === 'DONE') return 'success'
+  if (state === 'BLOCKED') return 'danger'
+  if (state === 'IN_PROGRESS') return 'warning'
+  if (state === 'PENDING_VERIFY' || state === 'VERIFYING') return 'primary'
+  return 'info'
+}
+
+function formatFlowTime(t) {
+  if (t == null) return ''
+  const s = String(t)
+  return s.length > 19 ? s.slice(0, 19) : s
+}
+
+function formatFlowDetailJson(raw) {
+  if (!raw) return ''
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
+}
+
+function sanitizeMmdLabel(s) {
+  if (s == null) return ''
+  return String(s).replace(/["\n\r]/g, ' ').replace(/\[/g, '(').replace(/\]/g, ')').slice(0, 96)
+}
+
+function buildTaskChainMermaid(events) {
+  const lines = ['flowchart LR']
+  if (!events.length) {
+    lines.push('  empty[暂无已记录事件]')
+    return lines.join('\n')
+  }
+  events.forEach((e, i) => {
+    const typ = sanitizeMmdLabel(flowEventTitle(e.eventType))
+    const actor = e.actorType === 'AGENT' ? 'Agent' : '人'
+    const aid = e.actorAgentId != null ? `#${e.actorAgentId}` : ''
+    const ts = sanitizeMmdLabel(formatFlowTime(e.createdAt))
+    const label = `${typ}<br/>${actor}${aid}<br/>${ts}`
+    lines.push(`  E${i}["${label}"]`)
+    if (i > 0) {
+      lines.push(`  E${i - 1} --> E${i}`)
+    }
+  })
+  return lines.join('\n')
+}
+
+function pipelineHighlightNodeId(state) {
+  switch (state) {
+    case 'PENDING':
+      return 'S1'
+    case 'IN_PROGRESS':
+      return 'S2'
+    case 'BLOCKED':
+      return 'SB'
+    case 'PENDING_VERIFY':
+    case 'VERIFYING':
+      return 'S3'
+    case 'DONE':
+      return 'S4'
+    default:
+      return 'S1'
+  }
+}
+
+function buildMainPipelineMermaid(state) {
+  const cur = pipelineHighlightNodeId(state)
+  return [
+    'flowchart TB',
+    '  S0["项目经理派工<br/>指定执行 Agent"]',
+    '  S1["待执行方开始<br/>PENDING"]',
+    '  S2["执行方干活<br/>IN_PROGRESS"]',
+    '  SB["阻塞<br/>BLOCKED"]',
+    '  S3["待核查/核查中<br/>PENDING_VERIFY / VERIFYING"]',
+    '  S4["已完成<br/>DONE"]',
+    '  S0 --> S1',
+    '  S1 --> S2',
+    '  S2 --> S3',
+    '  S3 --> S4',
+    '  S2 -. 阻塞 .-> SB',
+    '  classDef cur fill:#fff3c4,stroke:#f57c00,stroke-width:3px,color:#333',
+    `  class ${cur} cur`,
+  ].join('\n')
+}
+
+async function renderFlowMermaid() {
+  if (!mmdChainEl.value || !mmdPipelineEl.value || !flowTask.value) return
+  const mermaid = (await import('mermaid')).default
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'neutral', fontFamily: 'inherit' })
+  const pipelineDef = buildMainPipelineMermaid(flowTask.value.state)
+  const chainDef = buildTaskChainMermaid(flowEvents.value)
+  const t = Date.now()
+  try {
+    const { svg } = await mermaid.render(`mmd-pipe-${t}`, pipelineDef)
+    mmdPipelineEl.value.innerHTML = svg
+  } catch {
+    mmdPipelineEl.value.innerHTML = '<p class="flow-mmd-fail">主流程图渲染失败</p>'
+  }
+  try {
+    const { svg } = await mermaid.render(`mmd-chain-${t}`, chainDef)
+    mmdChainEl.value.innerHTML = svg
+  } catch {
+    mmdChainEl.value.innerHTML = '<p class="flow-mmd-fail">事件链图渲染失败</p>'
+  }
+}
+
+async function onFlowTabChange(name) {
+  if (name === 'chart' && flowDlg.value) {
+    await nextTick()
+    await renderFlowMermaid()
+  }
+  if (name === 'verifications' && flowTask.value) {
+    await loadFlowVerifications()
+  }
+}
+
+function onFlowDlgOpened() {
+  onFlowTabChange(flowTab.value)
+}
+
+async function loadFlowVerifications() {
+  if (!flowTask.value) return
+  try {
+    const res = await magListVerifications(flowTask.value.id)
+    flowVerifications.value = res.data || []
+  } catch {
+    flowVerifications.value = []
+    ElMessage.warning('加载核查记录失败')
+  }
+}
+
+async function openTaskFlow(row) {
+  flowTask.value = row
+  flowTab.value = 'chart'
+  flowEvents.value = []
+  flowVerifications.value = []
+  flowDlg.value = true
+  try {
+    const res = await magListTaskFlowEvents(row.id)
+    flowEvents.value = res.data || []
+  } catch {
+    ElMessage.warning('加载流程事件失败')
+    flowEvents.value = []
+  }
+  await nextTick()
+  await renderFlowMermaid()
+}
+
+function openVerify(row) {
+  verifyTask.value = row
+  const vAgents = verifyAgentOptions.value
+  verifyForm.value = {
+    verifierAgentId: vAgents.length ? vAgents[0].id : null,
+    result: 'PASS',
+    rationale: '',
+    evidenceSummary: '',
+    rowVersion: row.rowVersion,
+  }
+  verifyDlg.value = true
+}
+
+async function beginVerifyOnly(row) {
+  try {
+    await magBeginVerifyTask(row.id)
+    ElMessage.success('已进入核查中')
+    loadTasks()
+  } catch {
+    ElMessage.error('进入核查中失败（可能已非待核查状态）')
+  }
+}
+
+async function saveVerifyDecision() {
+  if (!verifyTask.value) return
+  if (verifyForm.value.verifierAgentId == null) {
+    ElMessage.warning('请选择核查 Agent（VERIFY 角色）')
+    return
+  }
+  if (!String(verifyForm.value.rationale || '').trim()) {
+    ElMessage.warning('请填写依据说明')
+    return
+  }
+  const tid = verifyTask.value.id
+  try {
+    await magSubmitVerifyDecision(tid, {
+      result: verifyForm.value.result,
+      verifierAgentId: verifyForm.value.verifierAgentId,
+      rationale: verifyForm.value.rationale.trim(),
+      evidenceSummary: verifyForm.value.evidenceSummary?.trim() || undefined,
+      rowVersion: verifyForm.value.rowVersion,
+    })
+    ElMessage.success('已提交核查裁定')
+    verifyDlg.value = false
+    await loadTasks()
+    if (flowDlg.value && flowTask.value && flowTask.value.id === tid) {
+      const updated = tasks.value.find((t) => t.id === tid)
+      if (updated) {
+        flowTask.value = updated
+      }
+      try {
+        const res = await magListTaskFlowEvents(tid)
+        flowEvents.value = res.data || []
+      } catch {
+        /* ignore */
+      }
+      await loadFlowVerifications()
+      await nextTick()
+      await renderFlowMermaid()
+    }
+  } catch {
+    ElMessage.error('提交失败（检查乐观锁 rowVersion 或任务状态）')
+  }
 }
 
 async function startTask(row) {
@@ -1193,6 +1871,129 @@ async function saveSched() {
   loadSched()
 }
 
+function threadCoordJsonPayload(raw) {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (!s.startsWith('{')) return null
+  try {
+    const o = JSON.parse(s)
+    if (!o || typeof o !== 'object' || o.kind == null) return null
+    return o
+  } catch {
+    return null
+  }
+}
+
+/** 后端协调线程写入的 JSON content（ASSIGN / BLOCK / REQUEST_NEXT / REQ_CHANGE_ANALYZE 等）→ 可读多行文案；assigneeAgentId、agentId 用 MagAgent.name */
+function buildThreadStructuredLines(content) {
+  const p = threadCoordJsonPayload(content)
+  if (!p) return null
+  const kind = String(p.kind || '').toUpperCase()
+  if (kind === 'ASSIGN') {
+    const title = p.title != null && String(p.title).trim() !== '' ? String(p.title).trim() : '（无标题）'
+    const tid = p.taskId != null ? String(p.taskId) : '—'
+    return [`派工：${title}`, `任务 ID：${tid}`, `执行人：${magAgentName(p.assigneeAgentId)}`]
+  }
+  if (kind === 'BLOCK') {
+    const lines = [`任务阻塞 · 任务 ID：${p.taskId != null ? String(p.taskId) : '—'}`]
+    if (p.reason) lines.push(`原因：${p.reason}`)
+    return lines
+  }
+  if (kind === 'REQUEST_NEXT') {
+    return [
+      '申领下一项工作',
+      `Agent：${magAgentName(p.agentId)}`,
+      `任务 ID：${p.taskId != null ? String(p.taskId) : '—'}`,
+    ]
+  }
+  if (kind === 'REQ_CHANGE_ANALYZE') {
+    const lines = ['需求变更分析']
+    if (p.traceId) lines.push(`追踪 ID：${p.traceId}`)
+    if (p.summary) lines.push(`摘要：${p.summary}`)
+    return lines
+  }
+  if (kind === 'A2A_INVOKE') {
+    const lines = [
+      'Agent2Agent 调用',
+      `调用方：${magAgentName(p.callerAgentId)}`,
+      `被调用方：${magAgentName(p.calleeAgentId)}`,
+    ]
+    if (p.instruction) {
+      const t = String(p.instruction)
+      lines.push(`说明：${t.length > 4000 ? `${t.slice(0, 4000)}…` : t}`)
+    }
+    return lines
+  }
+  if (kind === 'ORCH_ENTER') {
+    const lines = [
+      '编排执行进入',
+      `执行 Agent：${magAgentName(p.agentId)}`,
+      `触发用户 ID：${p.triggerUserId != null ? String(p.triggerUserId) : '—'}`,
+    ]
+    if (p.instruction) {
+      const t = String(p.instruction)
+      lines.push(`说明：${t.length > 4000 ? `${t.slice(0, 4000)}…` : t}`)
+    }
+    return lines
+  }
+  return null
+}
+
+function setThreadMessagesFromApi(rows) {
+  threadMessages.value = (rows || []).map((row) => ({
+    ...row,
+    displayLines: buildThreadStructuredLines(row.content),
+  }))
+}
+
+function threadAgentById(id) {
+  if (id == null) return null
+  return (agents.value || []).find((a) => a.id === id) || null
+}
+
+function threadMessageIsUser(m) {
+  return String(m.senderType || '').toUpperCase() === 'USER'
+}
+
+function threadMessageIsAgent(m) {
+  return String(m.senderType || '').toUpperCase() === 'AGENT'
+}
+
+function threadMessageIsSystem(m) {
+  return String(m.senderType || '').toUpperCase() === 'SYSTEM'
+}
+
+function threadSenderMeta(m) {
+  const st = String(m.senderType || '').toUpperCase()
+  if (st === 'USER') {
+    return { title: '我', subtitle: '' }
+  }
+  if (st === 'AGENT') {
+    const a = threadAgentById(m.senderAgentId)
+    const idPart = m.senderAgentId != null ? `#${m.senderAgentId}` : ''
+    const name = a?.name?.trim() ? a.name.trim() : m.senderAgentId != null ? `Agent ${idPart}` : 'Agent'
+    const role = a?.roleType ? agentRoleLabel(a.roleType) : ''
+    return { title: name, subtitle: role }
+  }
+  if (st === 'SYSTEM') {
+    return { title: '系统', subtitle: '' }
+  }
+  return { title: m.senderType || '—', subtitle: '' }
+}
+
+function threadAvatarLetter(m) {
+  const meta = threadSenderMeta(m)
+  const t = meta.title || 'A'
+  const ch = t.trim().charAt(0)
+  return ch || 'A'
+}
+
+async function scrollThreadChatToBottom() {
+  await nextTick()
+  const el = threadChatScrollRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
 function openThreadRoom(row) {
   threadRoom.value = row
   threadMsg.value = { content: '' }
@@ -1201,8 +2002,10 @@ function openThreadRoom(row) {
 
 async function onThreadDlgOpened() {
   if (!threadRoom.value) return
+  await loadAgents()
   const res = await magListMessages(threadRoom.value.id)
-  threadMessages.value = res.data
+  setThreadMessagesFromApi(res.data)
+  await scrollThreadChatToBottom()
 }
 
 async function postThreadMsg() {
@@ -1214,7 +2017,8 @@ async function postThreadMsg() {
   })
   threadMsg.value.content = ''
   const res = await magListMessages(threadRoom.value.id)
-  threadMessages.value = res.data
+  setThreadMessagesFromApi(res.data)
+  await scrollThreadChatToBottom()
 }
 
 function runResultMessage(data) {
@@ -1238,7 +2042,27 @@ async function runThreadRow(row) {
 }
 
 async function runAgentRow(row) {
-  const res = await magRunAgent(row.id)
+  let runBody = {}
+  if (row.roleType === 'PM') {
+    try {
+      const { value } = await ElMessageBox.prompt(
+        '可选：派工说明（传给 PM AgentScope，由模型调用 dispatch_task 等工具落库）',
+        '触发 PM 编排',
+        {
+          confirmButtonText: '确定',
+          cancelButtonText: '跳过说明',
+          distinguishCancelAndClose: true,
+          inputType: 'textarea',
+          inputPlaceholder: '例如：给后端 Agent（先 list_dispatchable_agents 看 id）派任务「实现登录接口」',
+        },
+      )
+      const v = value?.trim()
+      if (v) runBody = { instruction: v }
+    } catch (e) {
+      if (e !== 'cancel') return
+    }
+  }
+  const res = await magRunAgent(row.id, runBody)
   const data = res.data
   const msg = runResultMessage(data)
   if (data?.accepted === false) {
@@ -1276,24 +2100,283 @@ async function runAgentRow(row) {
 .toolbar.wrap {
   flex-wrap: wrap;
 }
-.msg-line {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  font-size: 13px;
+.thread-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 200px;
 }
-.msg-line .who {
-  display: inline-block;
-  min-width: 64px;
+.thread-chat-messages {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px 4px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+.thread-chat-empty {
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 13px;
   color: var(--el-text-color-secondary);
 }
-.msg-line .body {
+.thread-chat-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.thread-chat-row:last-child {
+  margin-bottom: 4px;
+}
+.thread-chat-row.is-user {
+  flex-direction: row-reverse;
+}
+.thread-chat-row.is-system {
+  justify-content: center;
+}
+.thread-chat-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--el-color-success), var(--el-color-success-dark-2));
+}
+.thread-chat-main {
+  min-width: 0;
+  max-width: calc(100% - 46px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.thread-chat-main.user {
+  max-width: 85%;
+  align-items: flex-end;
+}
+.thread-chat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.thread-chat-name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.thread-chat-id {
+  color: var(--el-text-color-secondary);
+  font-family: ui-monospace, monospace;
+}
+.thread-chat-role {
+  color: var(--el-text-color-secondary);
+}
+.thread-chat-bubble {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word;
+}
+.thread-chat-bubble.user {
+  background: var(--el-color-primary-light-9);
+  border: 1px solid var(--el-color-primary-light-5);
+  color: var(--el-text-color-primary);
+}
+.thread-chat-bubble.agent {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  color: var(--el-text-color-primary);
+}
+.thread-chat-line {
+  line-height: 1.55;
+}
+.thread-chat-line + .thread-chat-line {
+  margin-top: 6px;
+}
+.thread-chat-line:first-child {
+  font-weight: 600;
+}
+.thread-chat-system-lines {
+  display: block;
+  margin-top: 6px;
+  text-align: left;
+  width: 100%;
+}
+.thread-chat-system-lines .thread-chat-line:first-child {
+  font-weight: 600;
+}
+.thread-chat-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.thread-chat-foot.user {
+  flex-direction: row-reverse;
+}
+.thread-chat-label {
+  font-weight: 500;
+  color: var(--el-color-primary);
+}
+.thread-chat-time {
+  opacity: 0.85;
+}
+.thread-chat-system {
+  margin: 0 auto;
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color);
+  border: 1px dashed var(--el-border-color);
+  font-size: 13px;
+  text-align: center;
+  color: var(--el-text-color-regular);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.thread-chat-system-tag {
+  display: inline-block;
+  margin-right: 8px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+.thread-chat-system-body {
+  display: inline;
+}
+.thread-chat-composer {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.thread-chat-composer .el-textarea {
+  flex: 1;
+}
+.work-output-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.work-output-detail-meta {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+.work-output-detail-body {
+  margin: 0;
+  padding: 12px;
+  max-height: 480px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .form-hint {
   margin-top: 6px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.4;
+}
+.flow-task-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.flow-task-head-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.task-flow-steps {
+  margin: 16px 0 20px;
+  padding: 12px 8px;
+  background: var(--el-fill-color-blank);
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+.flow-block-alert {
+  margin-bottom: 16px;
+}
+.flow-chart-caption-main {
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.mermaid-host-main {
+  min-height: 220px;
+  margin-bottom: 20px;
+}
+.flow-ev-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.flow-ev-sum {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+.flow-ev-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+}
+.flow-detail {
+  margin: 8px 0 0;
+  padding: 8px;
+  font-size: 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  overflow-x: auto;
+  max-height: 160px;
+}
+.flow-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.flow-chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.flow-chart-box {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.flow-chart-caption {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+}
+.mermaid-host {
+  overflow-x: auto;
+  min-height: 120px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--el-bg-color);
+}
+.flow-mmd-fail {
+  font-size: 12px;
+  color: var(--el-color-warning);
+  margin: 8px;
 }
 </style>

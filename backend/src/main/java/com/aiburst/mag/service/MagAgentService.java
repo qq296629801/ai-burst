@@ -84,7 +84,16 @@ public class MagAgentService {
     }
 
     @Transactional
-    public Map<String, Object> requestAgentRun(Long agentId, Long userId) {
+    public Map<String, Object> requestAgentRun(Long agentId, Long userId, String instruction) {
+        return requestAgentRun(agentId, userId, instruction, null);
+    }
+
+    /**
+     * @param taskContextTaskId 派工自动执行等场景写入编排记录，便于失败告警关联任务；可为 null
+     */
+    @Transactional
+    public Map<String, Object> requestAgentRun(
+            Long agentId, Long userId, String instruction, Long taskContextTaskId) {
         MagAgent a = agentMapper.selectById(agentId);
         if (a == null) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
@@ -95,8 +104,10 @@ public class MagAgentService {
                     MagResultCode.MAG_AGENT_LLM_CHANNEL_REQUIRED,
                     "Agent 未绑定大模型通道（llmChannelId），无法执行编排");
         }
-        Map<String, Object> res = temporalTriggerService.triggerAgentRun(agentId, userId, "agentId=" + agentId);
-        orchestrationRunService.recordAgentTrigger(a.getProjectId(), agentId, userId, res);
+        String instr = instruction != null ? instruction.trim() : "";
+        Map<String, Object> res =
+                temporalTriggerService.triggerAgentRun(agentId, userId, "agentId=" + agentId, instr);
+        orchestrationRunService.recordAgentTrigger(a.getProjectId(), agentId, userId, res, taskContextTaskId);
         return res;
     }
 

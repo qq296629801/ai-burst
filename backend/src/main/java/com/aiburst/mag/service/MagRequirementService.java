@@ -21,11 +21,14 @@ import com.aiburst.mag.mapper.MagRequirementRevisionMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
 import com.aiburst.rbac.service.PermissionCacheService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,90 @@ public class MagRequirementService {
     private final MagMessageMapper messageMapper;
     private final MagTaskMapper taskMapper;
     private final MagModuleMapper moduleMapper;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * 供产品 Agent 工具读取当前需求正文（截断），会话与数据范围限定在项目内。
+     */
+    @Transactional(readOnly = true)
+    public String readRequirementDocExcerpt(Long projectId, Long userId, int maxChars) {
+        accessHelper.requireMember(projectId, userId);
+        Map<String, Object> doc = getDoc(projectId, userId);
+        String content = Objects.toString(doc.get("content"), "");
+        if (maxChars <= 0) {
+            maxChars = 8000;
+        }
+        maxChars = Math.min(maxChars, 120_000);
+        if (content.length() <= maxChars) {
+            return content;
+        }
+        return content.substring(0, maxChars) + "\n...[truncated]";
+    }
+
+    /**
+     * 将「待评审」的开发需求/变更建议写入需求池，锚定当前最新修订，供人工或 PM 后续决策。
+     */
+    @Transactional
+    public Map<String, Object> submitRequirementPoolCandidateFromAgent(
+            Long projectId,
+            Long userId,
+            String summary,
+            String proposedMarkdown,
+            String anchorJsonHint) {
+        accessHelper.requireMember(projectId, userId);
+        if (!StringUtils.hasText(summary)) {
+            throw new IllegalArgumentException("summary required");
+        }
+        MagRequirementDoc doc = docMapper.selectByProjectId(projectId);
+        if (doc == null) {
+            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
+        }
+        MagRequirementRevision latest = ensureFirstRevisionIfAbsent(doc, userId);
+        MagPoolItemCreateRequest req = new MagPoolItemCreateRequest();
+        req.setRevisionId(latest.getId());
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("summary", summary.trim());
+            payload.put(
+                    "proposedMarkdown",
+                    proposedMarkdown != null ? proposedMarkdown : "");
+            payload.put("source", "PRODUCT_AGENT");
+            req.setPayloadJson(objectMapper.writeValueAsString(payload));
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("payload json error");
+        }
+        req.setAnchorJson(StringUtils.hasText(anchorJsonHint) ? anchorJsonHint.trim() : "{}");
+        return createPoolItem(projectId, req, userId);
+    }
+
+    /**
+     * 需求池项须锚定某版修订。尚无修订时自动写入空正文 v1 并更新 current_version。
+     */
+    private MagRequirementRevision ensureFirstRevisionIfAbsent(MagRequirementDoc doc, Long userId) {
+        MagRequirementRevision latest = revisionMapper.selectLatest(doc.getId());
+        if (latest != null) {
+            return latest;
+        }
+        MagRequirementRevision rev = new MagRequirementRevision();
+        rev.setDocId(doc.getId());
+        rev.setVersion(1);
+        rev.setContent("");
+        rev.setAuthorUserId(userId);
+        try {
+            revisionMapper.insert(rev);
+            docMapper.updateCurrentVersion(doc.getId(), 1);
+            return rev;
+        } catch (Exception e) {
+            MagRequirementRevision again = revisionMapper.selectLatest(doc.getId());
+            if (again != null) {
+                return again;
+            }
+            if (e instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new IllegalStateException(e);
+        }
+    }
 
     public Map<String, Object> getDoc(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);

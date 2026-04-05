@@ -44,6 +44,37 @@ paths:
           description: OK
         '404':
           description: MAG_NOT_FOUND
+  /api/mag/projects/{id}/tasks/dispatch:
+    post:
+      tags: [mag-task]
+      summary: 项目经理派工 — 创建任务并指定执行 Agent（权限 mag:task:dispatch）
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: OK — data 为任务行
+        '409':
+          description: 核查 Agent 不可作为执行人等 — MAG_VERIFY_ASSIGNEE_CONFLICT
+  /api/mag/tasks/{id}/pm-reassign:
+    post:
+      tags: [mag-task]
+      summary: 项目经理改派执行 Agent（PENDING / IN_PROGRESS / BLOCKED）
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: OK
+        '409':
+          description: 状态不允许 — MAG_TASK_STATE_INVALID
+  /api/mag/tasks/{id}/flow-events:
+    get:
+      tags: [mag-task]
+      summary: 任务流程事件（时间线/可视化；权限 mag:project:list）
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: OK — data 为事件数组（eventType、actorType、summary、detailJson 等）
   /api/mag/tasks/{id}/submit-complete:
     post:
       tags: [mag-task]

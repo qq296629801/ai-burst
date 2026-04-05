@@ -30,7 +30,7 @@ public class MagTemporalTriggerService {
     private final MagTemporalProperties properties;
     private final ObjectProvider<WorkflowClient> workflowClientProvider;
 
-    public Map<String, Object> triggerAgentRun(long agentId, long userId, String hint) {
+    public Map<String, Object> triggerAgentRun(long agentId, long userId, String hint, String workflowInstruction) {
         Optional<Map<String, Object>> block = gate.blockIfAny(hint);
         if (block.isPresent()) {
             Map<String, Object> m = new HashMap<>(block.get());
@@ -49,7 +49,8 @@ public class MagTemporalTriggerService {
                         .build();
         MagAgentRunWorkflow stub = wc.newWorkflowStub(MagAgentRunWorkflow.class, options);
         try {
-            WorkflowClient.start(stub::execute, agentId, userId);
+            String instr = workflowInstruction != null ? workflowInstruction : "";
+            WorkflowClient.start(stub::execute, agentId, userId, instr);
         } catch (WorkflowExecutionAlreadyStarted e) {
             log.warn("MAG agent workflow already started: {}", workflowId);
             return successResponse(workflowId, MSG_STARTED, "agentId", agentId);

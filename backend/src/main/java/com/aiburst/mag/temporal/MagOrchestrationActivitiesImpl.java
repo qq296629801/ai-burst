@@ -25,7 +25,7 @@ public class MagOrchestrationActivitiesImpl implements MagOrchestrationActivitie
     private final MagAgentScopeRunService magAgentScopeRunService;
 
     @Override
-    public String executeAgentRun(long agentId, long triggerUserId) {
+    public String executeAgentRun(long agentId, long triggerUserId, String instruction) {
         String workflowId = Activity.getExecutionContext().getInfo().getWorkflowId();
         orchestrationRunService.markActivityStarted(workflowId);
         try {
@@ -33,7 +33,8 @@ public class MagOrchestrationActivitiesImpl implements MagOrchestrationActivitie
             if (a == null) {
                 throw new IllegalArgumentException("agent not found: " + agentId);
             }
-            String result = magAgentScopeRunService.executeAgentRun(a, triggerUserId);
+            String safeInstr = instruction != null ? instruction : "";
+            String result = magAgentScopeRunService.executeAgentRun(a, triggerUserId, safeInstr);
             orchestrationRunService.markActivitySucceeded(workflowId, result);
             return result;
         } catch (Exception e) {

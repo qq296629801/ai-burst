@@ -1,6 +1,7 @@
 package com.aiburst.mag.api;
 
 import com.aiburst.common.ApiResult;
+import com.aiburst.mag.dto.MagAgentRunRequest;
 import com.aiburst.mag.dto.MagAgentUpsertRequest;
 import com.aiburst.mag.service.MagAgentService;
 import com.aiburst.rbac.security.SecurityUtils;
@@ -53,8 +54,10 @@ public class MagAgentController {
 
     @PostMapping("/agents/{agentId}/run")
     @PreAuthorize("hasAuthority('mag:task:operate')")
-    @Operation(summary = "触发 Agent 编排（占位，由 Worker 消费）")
-    public ApiResult<Map<String, Object>> runAgent(@PathVariable Long agentId) {
-        return ApiResult.ok(agentService.requestAgentRun(agentId, SecurityUtils.currentUserId()));
+    @Operation(summary = "触发 Agent 编排（Temporal Worker + AgentScope；PM 可传 instruction 描述派工）")
+    public ApiResult<Map<String, Object>> runAgent(
+            @PathVariable Long agentId, @RequestBody(required = false) MagAgentRunRequest body) {
+        String instruction = body != null && body.getInstruction() != null ? body.getInstruction() : "";
+        return ApiResult.ok(agentService.requestAgentRun(agentId, SecurityUtils.currentUserId(), instruction));
     }
 }

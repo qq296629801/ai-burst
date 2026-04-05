@@ -18,6 +18,7 @@ import com.aiburst.mag.service.MagRequirementService;
 import com.aiburst.mag.service.MagScheduledJobService;
 import com.aiburst.mag.service.MagTaskService;
 import com.aiburst.mag.service.MagTodoService;
+import com.aiburst.mag.service.MagWorkOutputService;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -78,6 +79,9 @@ public abstract class AbstractMagControllersSliceTest {
 
     @MockBean
     protected MagTodoService todoService;
+
+    @MockBean
+    protected MagWorkOutputService workOutputService;
 
     @MockBean
     protected MagReleaseService releaseService;

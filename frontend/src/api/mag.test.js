@@ -74,7 +74,32 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     expect(http.post).toHaveBeenCalledWith('/mag/threads/7/run')
 
     await mag.magRunAgent(4)
-    expect(http.post).toHaveBeenCalledWith('/mag/agents/4/run')
+    expect(http.post).toHaveBeenCalledWith('/mag/agents/4/run', {})
+  })
+
+  it('任务核查 begin-verify / verify-decision', async () => {
+    await mag.magBeginVerifyTask(11)
+    expect(http.post).toHaveBeenCalledWith('/mag/tasks/11/begin-verify')
+
+    await mag.magSubmitVerifyDecision(12, {
+      result: 'FAIL',
+      verifierAgentId: 3,
+      rationale: '需补测试',
+      rowVersion: 1,
+    })
+    expect(http.post).toHaveBeenCalledWith('/mag/tasks/12/verify-decision', {
+      result: 'FAIL',
+      verifierAgentId: 3,
+      rationale: '需补测试',
+      rowVersion: 1,
+    })
+  })
+
+  it('产出物聚合', async () => {
+    await mag.magListWorkOutputs(5, { improvementLimit: 100, poolLimit: 50, revisionLimit: 10 })
+    expect(http.get).toHaveBeenCalledWith('/mag/projects/5/work-outputs', {
+      params: { improvementLimit: 100, poolLimit: 50, revisionLimit: 10 },
+    })
   })
 
   it('大屏、待办、定时任务与审计', async () => {

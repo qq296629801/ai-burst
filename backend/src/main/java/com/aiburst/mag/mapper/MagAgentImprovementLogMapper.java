@@ -11,4 +11,7 @@ public interface MagAgentImprovementLogMapper {
 
     List<MagAgentImprovementLog> selectByProjectAndAgent(@Param("projectId") Long projectId,
                                                          @Param("agentId") Long agentId);
+
+    List<MagAgentImprovementLog> selectByProjectId(
+            @Param("projectId") Long projectId, @Param("limit") int limit);
 }

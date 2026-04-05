@@ -19,6 +19,8 @@
 
     <properties>
         <java.version>24</java.version>
+        <!-- Boot 3.5 默认 jackson-bom 2.19 无 JsonSerializeAs；AgentScope/MCP 链路透传需 2.21+ -->
+        <jackson-bom.version>2.21.2</jackson-bom.version>
         <lombok.version>1.18.44</lombok.version>
         <jjwt.version>0.12.6</jjwt.version>
         <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>

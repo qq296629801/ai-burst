@@ -23,4 +23,11 @@
         WHERE project_id = #{projectId} AND agent_id = #{agentId}
         ORDER BY id DESC
     </select>
+
+    <select id="selectByProjectId" resultMap="BaseMap">
+        SELECT * FROM mag_agent_improvement_log
+        WHERE project_id = #{projectId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

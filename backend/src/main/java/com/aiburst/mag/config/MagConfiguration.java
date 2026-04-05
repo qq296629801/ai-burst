@@ -4,6 +4,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(MagTemporalProperties.class)
+@EnableConfigurationProperties({MagTemporalProperties.class, MagTaskAutomationProperties.class})
 public class MagConfiguration {
 }

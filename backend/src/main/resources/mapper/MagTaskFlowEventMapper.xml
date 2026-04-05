@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.aiburst.mag.mapper.MagTaskFlowEventMapper">
+
+    <resultMap id="BaseMap" type="com.aiburst.mag.entity.MagTaskFlowEvent">
+        <id column="id" property="id"/>
+        <result column="project_id" property="projectId"/>
+        <result column="task_id" property="taskId"/>
+        <result column="event_type" property="eventType"/>
+        <result column="actor_type" property="actorType"/>
+        <result column="actor_agent_id" property="actorAgentId"/>
+        <result column="summary" property="summary"/>
+        <result column="detail_json" property="detailJson"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mag_task_flow_event (project_id, task_id, event_type, actor_type, actor_agent_id, summary, detail_json)
+        VALUES (#{projectId}, #{taskId}, #{eventType}, #{actorType}, #{actorAgentId}, #{summary}, #{detailJson})
+    </insert>
+
+    <select id="selectByTaskId" resultMap="BaseMap">
+        SELECT * FROM mag_task_flow_event WHERE task_id = #{taskId} ORDER BY id ASC
+    </select>
+</mapper>

@@ -8,6 +8,7 @@
         <result column="run_kind" property="runKind"/>
         <result column="agent_id" property="agentId"/>
         <result column="thread_id" property="threadId"/>
+        <result column="task_id" property="taskId"/>
         <result column="workflow_id" property="workflowId"/>
         <result column="status" property="status"/>
         <result column="message" property="message"/>
@@ -23,10 +24,10 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO mag_orchestration_run (
-            project_id, run_kind, agent_id, thread_id, workflow_id, status, message, result_summary,
+            project_id, run_kind, agent_id, thread_id, task_id, workflow_id, status, message, result_summary,
             trigger_user_id, started_at, finished_at
         ) VALUES (
-            #{projectId}, #{runKind}, #{agentId}, #{threadId}, #{workflowId}, #{status}, #{message},
+            #{projectId}, #{runKind}, #{agentId}, #{threadId}, #{taskId}, #{workflowId}, #{status}, #{message},
             #{resultSummary}, #{triggerUserId}, #{startedAt}, #{finishedAt}
         )
     </insert>

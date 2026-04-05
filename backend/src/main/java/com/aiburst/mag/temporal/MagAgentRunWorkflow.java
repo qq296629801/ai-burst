@@ -7,5 +7,5 @@ import io.temporal.workflow.WorkflowMethod;
 public interface MagAgentRunWorkflow {
 
     @WorkflowMethod
-    String execute(long agentId, long triggerUserId);
+    String execute(long agentId, long triggerUserId, String instruction);
 }

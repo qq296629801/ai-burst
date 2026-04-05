@@ -32,14 +32,22 @@ public class MagOrchestrationRunService {
     private final MagAccessHelper accessHelper;
     private final MagWebSocketHub webSocketHub;
     private final ObjectMapper objectMapper;
+    private final MagAlertService alertService;
 
     @Transactional
     public void recordAgentTrigger(long projectId, long agentId, long userId, Map<String, Object> triggerResult) {
+        recordAgentTrigger(projectId, agentId, userId, triggerResult, null);
+    }
+
+    @Transactional
+    public void recordAgentTrigger(
+            long projectId, long agentId, long userId, Map<String, Object> triggerResult, Long taskId) {
         insertFromTrigger(
                 projectId,
                 MagConstants.ORCH_RUN_KIND_AGENT,
                 agentId,
                 null,
+                taskId,
                 userId,
                 triggerResult);
     }
@@ -51,6 +59,7 @@ public class MagOrchestrationRunService {
                 MagConstants.ORCH_RUN_KIND_THREAD,
                 null,
                 threadId,
+                null,
                 userId,
                 triggerResult);
     }
@@ -60,6 +69,7 @@ public class MagOrchestrationRunService {
             String runKind,
             Long agentId,
             Long threadId,
+            Long taskId,
             long userId,
             Map<String, Object> triggerResult) {
         boolean accepted = Boolean.TRUE.equals(triggerResult.get("accepted"));
@@ -73,6 +83,7 @@ public class MagOrchestrationRunService {
         row.setRunKind(runKind);
         row.setAgentId(agentId);
         row.setThreadId(threadId);
+        row.setTaskId(taskId);
         row.setWorkflowId(workflowId);
         row.setStatus(accepted ? MagConstants.ORCH_STATUS_SUBMITTED : MagConstants.ORCH_STATUS_REJECTED);
         row.setMessage(msg);
@@ -82,6 +93,17 @@ public class MagOrchestrationRunService {
         row.setFinishedAt(accepted ? null : now);
         runMapper.insert(row);
         broadcast(projectId, row.getId());
+        if (!accepted) {
+            Map<String, Object> pl = new HashMap<>();
+            pl.put("message", msg);
+            if (workflowId != null) {
+                pl.put("workflowId", workflowId);
+            }
+            if (agentId != null) {
+                pl.put("agentId", agentId);
+            }
+            alertService.raise(projectId, taskId, "ORCH_TRIGGER_REJECTED", "WARN", pl);
+        }
     }
 
     @Transactional
@@ -118,6 +140,15 @@ public class MagOrchestrationRunService {
         MagOrchestrationRun row = runMapper.selectByWorkflowId(workflowId);
         if (row != null) {
             broadcast(row.getProjectId(), row.getId());
+            if (MagConstants.ORCH_STATUS_FAILED.equals(status)) {
+                Map<String, Object> pl = new HashMap<>();
+                pl.put("workflowId", workflowId);
+                pl.put("detail", resultSummary);
+                if (row.getAgentId() != null) {
+                    pl.put("agentId", row.getAgentId());
+                }
+                alertService.raise(row.getProjectId(), row.getTaskId(), "ORCH_ACTIVITY_FAILED", "ERROR", pl);
+            }
         }
     }
 
@@ -136,6 +167,7 @@ public class MagOrchestrationRunService {
         m.put("runKind", r.getRunKind());
         m.put("agentId", r.getAgentId());
         m.put("threadId", r.getThreadId());
+        m.put("taskId", r.getTaskId());
         m.put("workflowId", r.getWorkflowId());
         m.put("status", r.getStatus());
         m.put("message", r.getMessage());

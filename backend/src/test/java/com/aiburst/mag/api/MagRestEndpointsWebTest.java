@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -52,6 +53,54 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
     }
 
     @Test
+    @WithMockMagUser(authorities = {"mag:project:list", "mag:task:operate"})
+    void tasks_beginVerifyAndVerifyDecision() throws Exception {
+        doNothing().when(taskService).beginVerify(eq(11L), anyLong());
+        mockMvc.perform(post("/api/mag/tasks/11/begin-verify"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        doNothing()
+                .when(taskService)
+                .submitVerificationDecision(eq(12L), any(), anyLong(), eq(false));
+        mockMvc.perform(post("/api/mag/tasks/12/verify-decision")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"result\":\"PASS\",\"verifierAgentId\":9,\"rationale\":\"抽检通过\",\"rowVersion\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    @WithMockMagUser(authorities = {"mag:project:list"})
+    void tasks_flowEvents() throws Exception {
+        when(taskService.listTaskFlowEvents(eq(10L), anyLong()))
+                .thenReturn(List.of(Map.of("eventType", "TASK_DISPATCHED", "summary", "派工")));
+        mockMvc.perform(get("/api/mag/tasks/10/flow-events"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data[0].eventType").value("TASK_DISPATCHED"));
+    }
+
+    @Test
+    @WithMockMagUser(authorities = {"mag:project:list", "mag:task:dispatch"})
+    void tasks_dispatchAndPmReassign() throws Exception {
+        when(taskService.dispatch(eq(1L), any(), anyLong())).thenReturn(Map.of("id", 8L));
+        mockMvc.perform(post("/api/mag/projects/1/tasks/dispatch")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"派工项\",\"assigneeAgentId\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        when(taskService.pmReassign(eq(8L), any(), anyLong())).thenReturn(Map.of("id", 8L));
+        mockMvc.perform(post("/api/mag/tasks/8/pm-reassign")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"assigneeAgentId\":3}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
     @WithMockMagUser(authorities = {"mag:project:list"})
     void orchestration_runs_list() throws Exception {
         when(orchestrationRunService.listByProject(eq(1L), anyLong(), anyInt()))
@@ -74,7 +123,7 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
                         .content("{\"roleType\":\"BACKEND\",\"name\":\"A1\"}"))
                 .andExpect(status().isOk());
 
-        when(agentService.requestAgentRun(eq(9L), anyLong())).thenReturn(Map.of("accepted", true));
+        when(agentService.requestAgentRun(eq(9L), anyLong(), any())).thenReturn(Map.of("accepted", true));
         mockMvc.perform(post("/api/mag/agents/9/run")).andExpect(status().isOk());
     }
 
@@ -224,5 +273,16 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
     void releases_list() throws Exception {
         when(releaseService.list(eq(1L), anyLong())).thenReturn(List.of());
         mockMvc.perform(get("/api/mag/projects/1/releases")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockMagUser(authorities = {"mag:project:list"})
+    void work_outputs_aggregated() throws Exception {
+        when(workOutputService.listAggregated(eq(1L), anyLong(), anyInt(), anyInt(), anyInt()))
+                .thenReturn(Map.of("items", List.of(Map.of("kind", "IMPROVEMENT", "summary", "plan"))));
+        mockMvc.perform(get("/api/mag/projects/1/work-outputs").param("improvementLimit", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.items[0].kind").value("IMPROVEMENT"));
     }
 }

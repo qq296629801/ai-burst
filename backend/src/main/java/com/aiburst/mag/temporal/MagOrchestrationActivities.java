@@ -7,7 +7,7 @@ import io.temporal.activity.ActivityMethod;
 public interface MagOrchestrationActivities {
 
     @ActivityMethod
-    String executeAgentRun(long agentId, long triggerUserId);
+    String executeAgentRun(long agentId, long triggerUserId, String instruction);
 
     @ActivityMethod
     String executeThreadRun(long threadId, long triggerUserId);
