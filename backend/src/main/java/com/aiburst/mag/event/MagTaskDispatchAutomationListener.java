@@ -100,7 +100,7 @@ public class MagTaskDispatchAutomationListener {
         if (StringUtils.hasText(task.getDescription())) {
             sb.append("说明：").append(task.getDescription()).append('\n');
         }
-        sb.append("请根据你的角色与工具推进实现；完成后由用户或流程「申报完成」。");
+        sb.append("请根据你的角色与工具推进实现；有产出物且编排成功后系统将自动申报完成（可配置），亦可手动申报完成。");
         return sb.toString();
     }
 }

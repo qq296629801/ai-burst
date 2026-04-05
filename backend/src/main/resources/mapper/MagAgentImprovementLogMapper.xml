@@ -30,4 +30,11 @@
         ORDER BY id DESC
         LIMIT #{limit}
     </select>
+
+    <select id="countByProjectAgentCreatedAtSince" resultType="int">
+        SELECT COUNT(1) FROM mag_agent_improvement_log
+        WHERE project_id = #{projectId}
+          AND agent_id = #{agentId}
+          AND created_at &gt;= #{sinceInclusive}
+    </select>
 </mapper>

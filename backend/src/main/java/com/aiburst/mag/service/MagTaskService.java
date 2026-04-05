@@ -17,6 +17,7 @@ import com.aiburst.mag.entity.MagModule;
 import com.aiburst.mag.entity.MagTask;
 import com.aiburst.mag.entity.MagTaskVerification;
 import com.aiburst.mag.entity.MagThread;
+import com.aiburst.mag.mapper.MagAgentImprovementLogMapper;
 import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.mapper.MagMessageMapper;
 import com.aiburst.mag.mapper.MagModuleMapper;
@@ -28,24 +29,35 @@ import com.aiburst.mag.mapper.MagThreadMapper;
 import com.aiburst.mag.config.MagTaskAutomationProperties;
 import com.aiburst.mag.event.MagTaskAutoOrchestrateEvent;
 import com.aiburst.mag.event.MagTaskPendingVerifyEvent;
+import com.aiburst.mag.event.MagTaskVerifiedPassEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MagTaskService {
+
+    /** 未落库改进日志时，仅当编排最终回复长于该阈值（且非占位 "OK"）才视为文本产出物。 */
+    private static final int MIN_ORCH_RESULT_CHARS_FOR_TEXT_DELIVERABLE = 48;
+
+    /** {@code mag_task.block_reason} 列为 VARCHAR(512) */
+    private static final int BLOCK_REASON_MAX = 512;
 
     private final MagTaskMapper taskMapper;
     private final MagTaskVerificationMapper verificationMapper;
@@ -60,6 +72,8 @@ public class MagTaskService {
     private final ApplicationEventPublisher eventPublisher;
     private final MagTaskAutomationProperties taskAutomationProperties;
     private final MagAlertService alertService;
+    private final MagAgentImprovementLogMapper improvementLogMapper;
+    private final MagCoordinationChatWriter coordinationChatWriter;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -123,6 +137,13 @@ public class MagTaskService {
         t.setRowVersion(0);
         taskMapper.insert(t);
         Long taskId = t.getId();
+        if (dispatchingPmAgentId != null && threadMapper.selectLatestByTaskId(taskId) == null) {
+            MagThread chat = new MagThread();
+            chat.setProjectId(projectId);
+            chat.setTaskId(taskId);
+            chat.setTitle(taskCommunicationThreadTitle(req.getTitle().trim()));
+            threadMapper.insert(chat);
+        }
         postCoordAssignMessage(projectId, taskId, req.getAssigneeAgentId(), req.getTitle().trim());
         boolean byPmAgent = dispatchingPmAgentId != null;
         Map<String, Object> dispDetail = new LinkedHashMap<>();
@@ -179,6 +200,79 @@ public class MagTaskService {
         return toRow(taskMapper.selectById(taskId));
     }
 
+    /**
+     * Agent 编排 Activity 失败落库后调用：若任务仍为进行中且执行人与本次编排 Agent 一致，则置为阻塞并写入原因。
+     * <p>不重复发 {@code TASK_BLOCKED} 告警（编排侧已有 {@code ORCH_ACTIVITY_FAILED}）。异常吞掉以免掩盖 Temporal 失败路径。
+     */
+    @Transactional
+    public void applyAgentOrchestrationActivityFailure(
+            Long taskId,
+            String runKind,
+            Long orchestrationAgentId,
+            Long triggerUserId,
+            String errorSummary) {
+        try {
+            if (taskId == null
+                    || orchestrationAgentId == null
+                    || !MagConstants.ORCH_RUN_KIND_AGENT.equals(runKind)) {
+                return;
+            }
+            MagTask task = taskMapper.selectById(taskId);
+            if (task == null) {
+                return;
+            }
+            if (!MagConstants.TASK_IN_PROGRESS.equals(task.getState())) {
+                return;
+            }
+            if (!Objects.equals(task.getAssigneeAgentId(), orchestrationAgentId)) {
+                return;
+            }
+            if (triggerUserId != null) {
+                accessHelper.requireMember(task.getProjectId(), triggerUserId);
+            }
+            String prefix = "Agent编排执行失败：";
+            String tail =
+                    StringUtils.hasText(errorSummary)
+                            ? errorSummary.trim()
+                            : MagConstants.ORCH_STATUS_FAILED;
+            String reason = trimBlockReason(prefix + tail);
+            task.setState(MagConstants.TASK_BLOCKED);
+            task.setBlockReason(reason);
+            task.setBlockedByAgentId(orchestrationAgentId);
+            taskMapper.update(task);
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("assigneeAgentId", orchestrationAgentId);
+            if (StringUtils.hasText(errorSummary)) {
+                detail.put(
+                        "errorSummary",
+                        errorSummary.length() > 400 ? errorSummary.substring(0, 400) + "…" : errorSummary);
+            }
+            flowRecorder.record(
+                    task.getProjectId(),
+                    taskId,
+                    MagTaskFlowEventType.TASK_ORCHESTRATION_FAILED,
+                    "SYSTEM",
+                    null,
+                    "Agent 编排执行失败 → 阻塞（进行中 → 阻塞）",
+                    detail);
+        } catch (Exception e) {
+            log.warn(
+                    "MAG apply orchestration activity failure to task failed taskId={}: {}",
+                    taskId,
+                    e.toString());
+        }
+    }
+
+    private static String trimBlockReason(String s) {
+        if (s == null) {
+            return "";
+        }
+        if (s.length() <= BLOCK_REASON_MAX) {
+            return s;
+        }
+        return s.substring(0, BLOCK_REASON_MAX - 1) + "…";
+    }
+
     @Transactional
     public void start(Long taskId, Long userId) {
         MagTask task = taskMapper.selectById(taskId);
@@ -228,6 +322,82 @@ public class MagTaskService {
                 "申报完成（进行中 → 待核查）",
                 Map.of("temporalWorkflowId", wfId));
         eventPublisher.publishEvent(new MagTaskPendingVerifyEvent(taskId, task.getProjectId(), userId));
+    }
+
+    /**
+     * 在关联任务的 Agent 编排 Activity 已成功结束且事务已提交后调用：
+     * 若任务仍为「进行中」、执行 Agent 与编排一致，且存在产出物（本次编排时间窗内的改进日志，或足够长的非占位最终回复），
+     * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。
+     *
+     * <p>VERIFY Agent 的核查编排虽然带 taskId，但任务处于核查态且 assignee 非 VERIFY，故不会满足条件。
+     */
+    public void tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration(
+            long taskId,
+            long orchestrationAgentId,
+            long actingUserId,
+            LocalDateTime outputWindowStart,
+            String orchestrationResultSummary) {
+        if (!taskAutomationProperties.isAutoSubmitCompleteOnOrchestrationSuccess()) {
+            return;
+        }
+        MagTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return;
+        }
+        if (!MagConstants.TASK_IN_PROGRESS.equals(task.getState())) {
+            log.debug(
+                    "skip auto submit-complete: taskId={} state={} (expected IN_PROGRESS)",
+                    taskId,
+                    task.getState());
+            return;
+        }
+        if (!Objects.equals(task.getAssigneeAgentId(), orchestrationAgentId)) {
+            log.debug(
+                    "skip auto submit-complete: taskId={} assigneeAgentId={} orchAgentId={}",
+                    taskId,
+                    task.getAssigneeAgentId(),
+                    orchestrationAgentId);
+            return;
+        }
+        LocalDateTime since = outputWindowStart != null ? outputWindowStart : LocalDateTime.MIN;
+        if (!hasDeliverableAfterOrchestration(
+                task.getProjectId(), orchestrationAgentId, since, orchestrationResultSummary)) {
+            log.debug(
+                    "skip auto submit-complete: taskId={} no deliverable (improvement log in window or long reply)",
+                    taskId);
+            return;
+        }
+        try {
+            submitComplete(taskId, new MagSubmitCompleteRequest(), actingUserId);
+            log.info(
+                    "MAG auto submit-complete: taskId={} projectId={} after successful agent orchestration",
+                    taskId,
+                    task.getProjectId());
+        } catch (Exception e) {
+            log.warn(
+                    "MAG auto submit-complete failed taskId={}: {}",
+                    taskId,
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    private boolean hasDeliverableAfterOrchestration(
+            long projectId,
+            long agentId,
+            LocalDateTime sinceInclusive,
+            String orchestrationResultSummary) {
+        int n = improvementLogMapper.countByProjectAgentCreatedAtSince(projectId, agentId, sinceInclusive);
+        if (n > 0) {
+            return true;
+        }
+        if (!StringUtils.hasText(orchestrationResultSummary)) {
+            return false;
+        }
+        String t = orchestrationResultSummary.trim();
+        if (t.isEmpty() || "OK".equalsIgnoreCase(t)) {
+            return false;
+        }
+        return t.length() >= MIN_ORCH_RESULT_CHARS_FOR_TEXT_DELIVERABLE;
     }
 
     /**
@@ -328,6 +498,11 @@ public class MagTaskService {
             detail.put("submittedByUserId", actingUserId);
         }
         flowRecorder.record(task.getProjectId(), taskId, evt, actorType, actorAgentId, summary, detail);
+
+        if ("PASS".equals(result)) {
+            eventPublisher.publishEvent(
+                    new MagTaskVerifiedPassEvent(task.getProjectId(), taskId, actingUserId));
+        }
     }
 
     private void requireVerifierAgentInProject(MagAgent agent, Long projectId) {
@@ -356,9 +531,9 @@ public class MagTaskService {
         task.setBlockReason(req.getReason());
         task.setBlockedByAgentId(req.getBlockedByAgentId());
         taskMapper.update(task);
-        MagThread coord = ensureCoordThread(task.getProjectId());
+        long threadId = coordinationChatWriter.resolveThreadIdForCoordOrPmTask(task.getProjectId(), taskId);
         MagMessage m = new MagMessage();
-        m.setThreadId(coord.getId());
+        m.setThreadId(threadId);
         m.setSenderType(req.getBlockedByAgentId() != null ? "AGENT" : "USER");
         m.setSenderAgentId(req.getBlockedByAgentId());
         try {
@@ -394,9 +569,9 @@ public class MagTaskService {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
         }
         accessHelper.requireMember(task.getProjectId(), userId);
-        MagThread coord = ensureCoordThread(task.getProjectId());
+        long threadId = coordinationChatWriter.resolveThreadIdForCoordOrPmTask(task.getProjectId(), taskId);
         MagMessage m = new MagMessage();
-        m.setThreadId(coord.getId());
+        m.setThreadId(threadId);
         m.setSenderType("AGENT");
         m.setSenderAgentId(req.getAgentId());
         try {
@@ -450,9 +625,9 @@ public class MagTaskService {
     }
 
     private void postCoordAssignMessage(Long projectId, Long taskId, Long assigneeAgentId, String title) {
-        MagThread coord = ensureCoordThread(projectId);
+        long threadId = coordinationChatWriter.resolveThreadIdForCoordOrPmTask(projectId, taskId);
         MagMessage m = new MagMessage();
-        m.setThreadId(coord.getId());
+        m.setThreadId(threadId);
         m.setSenderType("USER");
         m.setSenderAgentId(null);
         try {
@@ -468,18 +643,17 @@ public class MagTaskService {
         messageMapper.insert(m);
     }
 
-    private MagThread ensureCoordThread(Long projectId) {
-        List<MagThread> threads = threadMapper.selectByProjectId(projectId);
-        for (MagThread t : threads) {
-            if ("需求与派工协调".equals(t.getTitle())) {
-                return t;
-            }
+    private static String taskCommunicationThreadTitle(String taskTitle) {
+        String prefix = "任务沟通 · ";
+        String t = taskTitle != null ? taskTitle.trim() : "";
+        int maxRest = 256 - prefix.length();
+        if (maxRest < 8) {
+            return prefix.substring(0, Math.min(prefix.length(), 256));
         }
-        MagThread t = new MagThread();
-        t.setProjectId(projectId);
-        t.setTitle("需求与派工协调");
-        threadMapper.insert(t);
-        return threadMapper.selectById(t.getId());
+        if (t.length() > maxRest) {
+            t = t.substring(0, maxRest - 1) + "…";
+        }
+        return prefix + t;
     }
 
     public List<Map<String, Object>> listVerifications(Long taskId, Long userId) {

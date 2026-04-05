@@ -135,6 +135,9 @@ function connectWsForProject() {
       ) {
         load()
       }
+      if (data?.event === 'mag.alert.new' && Number(data?.projectId) === Number(projectId.value)) {
+        load()
+      }
     },
   })
 }

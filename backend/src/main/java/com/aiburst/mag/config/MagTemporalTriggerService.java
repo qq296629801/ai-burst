@@ -31,6 +31,14 @@ public class MagTemporalTriggerService {
     private final ObjectProvider<WorkflowClient> workflowClientProvider;
 
     public Map<String, Object> triggerAgentRun(long agentId, long userId, String hint, String workflowInstruction) {
+        return triggerAgentRun(agentId, userId, hint, workflowInstruction, null);
+    }
+
+    /**
+     * @param taskContextTaskId 非空则传入 Workflow，供 Activity 将对话气泡写入对应任务的沟通线程
+     */
+    public Map<String, Object> triggerAgentRun(
+            long agentId, long userId, String hint, String workflowInstruction, Long taskContextTaskId) {
         Optional<Map<String, Object>> block = gate.blockIfAny(hint);
         if (block.isPresent()) {
             Map<String, Object> m = new HashMap<>(block.get());
@@ -50,7 +58,8 @@ public class MagTemporalTriggerService {
         MagAgentRunWorkflow stub = wc.newWorkflowStub(MagAgentRunWorkflow.class, options);
         try {
             String instr = workflowInstruction != null ? workflowInstruction : "";
-            WorkflowClient.start(stub::execute, agentId, userId, instr);
+            long tid = taskContextTaskId != null ? taskContextTaskId : 0L;
+            WorkflowClient.start(stub::execute, agentId, userId, instr, tid);
         } catch (WorkflowExecutionAlreadyStarted e) {
             log.warn("MAG agent workflow already started: {}", workflowId);
             return successResponse(workflowId, MSG_STARTED, "agentId", agentId);

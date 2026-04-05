@@ -36,13 +36,13 @@ aiburst:
     agentscope:
       max-iters: 4
       pm-max-iters: 10
-      call-timeout-seconds: 120
+      call-timeout-seconds: 1200
       # AgentScope 会话落盘目录：按 p{projectId}/a{agentId} 隔离，禁止跨项目复用
       session-root: ${java.io.tmpdir}/mag-agent-sessions
       a2a-max-depth: 5
       # 根级 Agent 编排单线程 FIFO 排队依次执行（嵌套 A2A 不入队）；多 Worker 进程时每个进程各有一条队列
       serial-agent-run: true
-      serial-queue-timeout-seconds: 600
+      serial-queue-timeout-seconds: 6000
     mcp:
       enabled: false
       # 启用后通过 SSE 连接 MCP Server，工具并入各职能 Agent 的 Toolkit（由大模型调度）
@@ -55,6 +55,15 @@ aiburst:
       auto-start-on-dispatch: true
       # 申报完成进入待核查后，自动进入核查中并触发 VERIFY Agent 编排（无 VERIFY Agent 时仅告警，可人工核查）
       auto-verify-on-submit-complete: true
+      # 关联任务的执行方 Agent 编排成功且存在产出物时，自动申报完成（进入待核查）；关闭后仅可手动申报
+      auto-submit-complete-on-orchestration-success: true
+      # 核查 PASS 结项后自动拉起项目经理 Agent 复盘全项目任务/模块；PM 可继续派工，链式重复直至阶段闭环
+      auto-pm-review-after-verified-pass: true
+      # 当项目内全部任务均为已完成时写入告警（INFO），提示用户需再派发新任务
+      notify-when-all-tasks-done: true
+    ws:
+      # 新告警落库后向订阅了 project:{id} 的 WebSocket 客户端推送 mag.alert.new
+      alert-broadcast: true
     temporal:
       # 已开启：触发「Agent/线程编排」会探测 127.0.0.1:7233；请先执行 docker compose -f docker-compose.temporal.yml up -d
       enabled: true

@@ -106,7 +106,8 @@ public class MagAgentService {
         }
         String instr = instruction != null ? instruction.trim() : "";
         Map<String, Object> res =
-                temporalTriggerService.triggerAgentRun(agentId, userId, "agentId=" + agentId, instr);
+                temporalTriggerService.triggerAgentRun(
+                        agentId, userId, "agentId=" + agentId, instr, taskContextTaskId);
         orchestrationRunService.recordAgentTrigger(a.getProjectId(), agentId, userId, res, taskContextTaskId);
         return res;
     }

@@ -2,8 +2,10 @@ package com.aiburst.mag.service;
 
 import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagResultCode;
+import com.aiburst.mag.config.MagWsNotifyProperties;
 import com.aiburst.mag.entity.MagAlertEvent;
 import com.aiburst.mag.mapper.MagAlertEventMapper;
+import com.aiburst.mag.ws.MagWebSocketHub;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,8 @@ public class MagAlertService {
     private final MagAlertEventMapper alertEventMapper;
     private final MagAccessHelper accessHelper;
     private final ObjectMapper objectMapper;
+    private final MagWebSocketHub webSocketHub;
+    private final MagWsNotifyProperties wsNotifyProperties;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -48,6 +52,22 @@ public class MagAlertService {
         }
         e.setAcknowledged(0);
         alertEventMapper.insert(e);
+        broadcastAlertIfEnabled(projectId, e);
+    }
+
+    private void broadcastAlertIfEnabled(Long projectId, MagAlertEvent e) {
+        if (!wsNotifyProperties.isAlertBroadcast() || projectId == null) {
+            return;
+        }
+        try {
+            Map<String, Object> envelope = new HashMap<>();
+            envelope.put("event", "mag.alert.new");
+            envelope.put("projectId", projectId);
+            envelope.put("alert", toRow(e));
+            webSocketHub.broadcast("project:" + projectId, objectMapper.writeValueAsString(envelope));
+        } catch (JsonProcessingException ex) {
+            // 告警已落库，推送失败不反滚
+        }
     }
 
     @Transactional

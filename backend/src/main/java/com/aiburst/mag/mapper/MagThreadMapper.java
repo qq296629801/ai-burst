@@ -12,6 +12,9 @@ public interface MagThreadMapper {
 
     MagThread selectById(@Param("id") Long id);
 
+    /** 任务专属沟通线程（项目经理派工时创建），按 id 倒序取最新一条 */
+    MagThread selectLatestByTaskId(@Param("taskId") Long taskId);
+
     List<MagThread> selectByProjectId(@Param("projectId") Long projectId);
 
     LocalDateTime selectLatestMessageAtByProjectId(@Param("projectId") Long projectId);

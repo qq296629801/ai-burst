@@ -4,6 +4,7 @@ import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.dto.MagTaskDispatchRequest;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.mapper.MagAgentMapper;
+import com.aiburst.mag.service.MagModuleService;
 import com.aiburst.mag.service.MagTaskService;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
@@ -14,15 +15,19 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 项目经理（PM）Agent 的 AgentScope 工具：列出可指派 Agent、派发任务（写入 {@code mag_task} 与协调线程）。
+ * 项目经理（PM）Agent 的 AgentScope 工具：列出可指派 Agent、派发任务、查看任务与模块以分析进度（写入 {@code mag_task}
+ * 与协调线程）。
  */
 @RequiredArgsConstructor
 public final class MagPmDispatchTools {
+
+    private static final int TASK_LIST_MAX_LINES = 120;
 
     private final long projectId;
     private final long triggerUserId;
     private final long pmAgentId;
     private final MagTaskService taskService;
+    private final MagModuleService moduleService;
     private final MagAgentMapper agentMapper;
 
     @Tool(
@@ -49,6 +54,86 @@ public final class MagPmDispatchTools {
                     .append("; ");
         }
         return sb.length() > 0 ? sb.toString().trim() : "EMPTY";
+    }
+
+    @Tool(
+            name = "list_project_tasks",
+            description =
+                    "列出当前项目全部任务（id、state、title、assigneeAgentId、moduleId）。"
+                            + "在派工后、或需要判断还有哪些工作未完成、是否继续派工时调用；"
+                            + "结合 state（PENDING/IN_PROGRESS/BLOCKED/PENDING_VERIFY/VERIFYING/DONE 等）识别缺口。")
+    public String listProjectTasks() {
+        try {
+            List<Map<String, Object>> rows = taskService.listByProject(projectId, triggerUserId);
+            if (rows == null || rows.isEmpty()) {
+                return "EMPTY (no tasks)";
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("count=").append(rows.size()).append('\n');
+            int n = 0;
+            for (Map<String, Object> r : rows) {
+                if (n++ >= TASK_LIST_MAX_LINES) {
+                    sb.append("...[truncated, show first ")
+                            .append(TASK_LIST_MAX_LINES)
+                            .append(" tasks]");
+                    break;
+                }
+                sb.append("taskId=")
+                        .append(r.get("id"))
+                        .append(" state=")
+                        .append(r.get("state"))
+                        .append(" assignee=")
+                        .append(r.get("assigneeAgentId"))
+                        .append(" moduleId=")
+                        .append(r.get("moduleId"))
+                        .append(" title=")
+                        .append(r.get("title") != null ? String.valueOf(r.get("title")).replace('\n', ' ') : "")
+                        .append('\n');
+            }
+            return sb.toString().trim();
+        } catch (MagBusinessException e) {
+            return "ERROR "
+                    + e.getResultCode().name()
+                    + " "
+                    + (e.getMessage() != null ? e.getMessage() : "");
+        } catch (Exception e) {
+            return "ERROR " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
+    }
+
+    @Tool(
+            name = "list_project_modules",
+            description =
+                    "列出当前项目功能模块（id、name、parentId、tag）。"
+                            + "用于对照需求拆解、发现尚未覆盖的模块或派工时的 moduleId 选择。")
+    public String listProjectModules() {
+        try {
+            List<Map<String, Object>> rows = moduleService.list(projectId, triggerUserId);
+            if (rows == null || rows.isEmpty()) {
+                return "EMPTY (no modules)";
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("count=").append(rows.size()).append('\n');
+            for (Map<String, Object> r : rows) {
+                sb.append("moduleId=")
+                        .append(r.get("id"))
+                        .append(" parentId=")
+                        .append(r.get("parentId"))
+                        .append(" name=")
+                        .append(r.get("name") != null ? String.valueOf(r.get("name")).replace('\n', ' ') : "")
+                        .append(" tag=")
+                        .append(r.get("tag") != null ? r.get("tag") : "")
+                        .append('\n');
+            }
+            return sb.toString().trim();
+        } catch (MagBusinessException e) {
+            return "ERROR "
+                    + e.getResultCode().name()
+                    + " "
+                    + (e.getMessage() != null ? e.getMessage() : "");
+        } catch (Exception e) {
+            return "ERROR " + e.getClass().getSimpleName() + ": " + e.getMessage();
+        }
     }
 
     @Tool(

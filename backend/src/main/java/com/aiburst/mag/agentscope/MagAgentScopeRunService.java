@@ -12,10 +12,13 @@ import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.service.MagCoordinationChatWriter;
 import com.aiburst.mag.service.MagImprovementLogService;
+import com.aiburst.mag.service.MagModuleService;
 import com.aiburst.mag.service.MagRequirementService;
 import com.aiburst.mag.service.MagTaskService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentscope.core.agent.Event;
+import io.agentscope.core.agent.StreamOptions;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.memory.InMemoryMemory;
 import io.agentscope.core.message.Msg;
@@ -54,7 +57,7 @@ import java.util.concurrent.TimeoutException;
 /**
  * Temporal Activity 内通过 AgentScope Java 调用 {@link MagAgent} 绑定的大模型通道；
  * 会话持久化目录按 projectId + agentId 隔离；按角色注册工具（PM 派工、产品需求、开发分层、测试计划、A2A、
- * 可选 MCP 与 classpath Agent Skill、PM 子 Agent as Tool）。
+ * 主 Agent 向 PM 要派工 {@link MagMainAgentPmRequestTools}、可选 MCP 与 classpath Agent Skill、PM 子 Agent as Tool）。
  */
 @Slf4j
 @Service
@@ -69,6 +72,7 @@ public class MagAgentScopeRunService {
     private final LlmCryptoService llmCryptoService;
     private final LlmProviderCatalog llmProviderCatalog;
     private final MagTaskService magTaskService;
+    private final MagModuleService magModuleService;
     private final MagAgentMapper magAgentMapper;
     private final MagTaskMapper magTaskMapper;
     private final MagRequirementService magRequirementService;
@@ -113,14 +117,22 @@ public class MagAgentScopeRunService {
      * 嵌套调用与队列工作线程同线程，不再入队，避免死锁。
      */
     public String executeAgentRun(MagAgent agent, long triggerUserId, String instruction) {
+        return executeAgentRun(agent, triggerUserId, instruction, null);
+    }
+
+    /**
+     * @param taskContextTaskId 非空时写入对应任务沟通线程的气泡与协调消息；嵌套 A2A 沿用根级 ThreadLocal
+     */
+    public String executeAgentRun(MagAgent agent, long triggerUserId, String instruction, Long taskContextTaskId) {
         int d = A2A_DEPTH.get();
         if (d >= a2aMaxDepth) {
             throw new MagBusinessException(MagResultCode.MAG_UNKNOWN, "Agent2Agent 嵌套深度超过限制");
         }
         if (serialAgentRun && d == 0) {
             try {
+                Long capTask = taskContextTaskId;
                 return serialRunner
-                        .submit(() -> executeAgentRunWithinDepth(agent, triggerUserId, instruction))
+                        .submit(() -> executeAgentRunWithinDepth(agent, triggerUserId, instruction, capTask))
                         .get(Math.max(serialQueueTimeoutSeconds, callTimeoutSeconds + 60), TimeUnit.SECONDS);
             } catch (TimeoutException e) {
                 throw new MagBusinessException(
@@ -137,44 +149,57 @@ public class MagAgentScopeRunService {
                 throw new IllegalStateException("Agent 编排队列被中断", e);
             }
         }
-        return executeAgentRunWithinDepth(agent, triggerUserId, instruction);
+        return executeAgentRunWithinDepth(agent, triggerUserId, instruction, taskContextTaskId);
     }
 
-    private String executeAgentRunWithinDepth(MagAgent agent, long triggerUserId, String instruction) {
+    private String executeAgentRunWithinDepth(
+            MagAgent agent, long triggerUserId, String instruction, Long rootTaskContextTaskId) {
         int depth = A2A_DEPTH.get();
         if (depth >= a2aMaxDepth) {
             throw new MagBusinessException(MagResultCode.MAG_UNKNOWN, "Agent2Agent 嵌套深度超过限制");
         }
-        if (depth >= 1) {
-            Long callerAgentId = MagA2aCallerStack.peek();
-            if (callerAgentId != null) {
+        if (depth == 0) {
+            MagAgentRunTaskContext.set(rootTaskContextTaskId);
+        }
+        try {
+            Long taskForThread = MagAgentRunTaskContext.get();
+            if (depth >= 1) {
+                Long callerAgentId = MagA2aCallerStack.peek();
+                if (callerAgentId != null) {
+                    try {
+                        coordinationChatWriter.recordA2aInvoke(
+                                agent.getProjectId(),
+                                callerAgentId,
+                                agent.getId(),
+                                triggerUserId,
+                                instruction != null ? instruction : "",
+                                taskForThread);
+                    } catch (Exception ex) {
+                        log.warn("MAG A2A 写入沟通失败: {}", ex.toString());
+                    }
+                }
+            } else {
                 try {
-                    coordinationChatWriter.recordA2aInvoke(
+                    coordinationChatWriter.recordOrchestrationEnter(
                             agent.getProjectId(),
-                            callerAgentId,
                             agent.getId(),
                             triggerUserId,
-                            instruction != null ? instruction : "");
+                            instruction != null ? instruction : "",
+                            taskForThread);
                 } catch (Exception ex) {
-                    log.warn("MAG A2A 写入沟通失败: {}", ex.toString());
+                    log.warn("MAG 编排进入写入沟通失败: {}", ex.toString());
                 }
             }
-        } else {
+            A2A_DEPTH.set(depth + 1);
             try {
-                coordinationChatWriter.recordOrchestrationEnter(
-                        agent.getProjectId(),
-                        agent.getId(),
-                        triggerUserId,
-                        instruction != null ? instruction : "");
-            } catch (Exception ex) {
-                log.warn("MAG 编排进入写入沟通失败: {}", ex.toString());
+                return runOnceWithProjectSession(agent, triggerUserId, instruction);
+            } finally {
+                A2A_DEPTH.set(depth);
             }
-        }
-        A2A_DEPTH.set(depth + 1);
-        try {
-            return runOnceWithProjectSession(agent, triggerUserId, instruction);
         } finally {
-            A2A_DEPTH.set(depth);
+            if (depth == 0) {
+                MagAgentRunTaskContext.clear();
+            }
         }
     }
 
@@ -238,21 +263,17 @@ public class MagAgentScopeRunService {
         String userLine = buildUserLine(isPm, agent, instruction);
 
         long awaitSeconds = Math.max(1L, (long) callTimeoutSeconds + 30L);
-        Msg reply;
+        List<Msg> input = List.of(Msg.builder().role(MsgRole.USER).textContent(userLine).build());
+        List<Event> events;
         try {
-            // 使用 toFuture().get() 替代 block()，避免 Reactor BlockingSingleSubscriber 附加
-            // Suppressed: "#block terminated with an error"（与真实错误无关，易误判为并发问题）
-            reply =
+            events =
                     reactAgent
-                            .call(List.of(Msg.builder().role(MsgRole.USER).textContent(userLine).build()))
-                            .toFuture()
-                            .get(awaitSeconds, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            throw new MagBusinessException(
-                    MagResultCode.MAG_UNKNOWN, "AgentScope 编排等待结果超时（" + awaitSeconds + "s）");
-        } catch (ExecutionException e) {
-            Throwable c = e.getCause();
-            ModelException me = unwrapModelException(c != null ? c : e);
+                            .stream(input, StreamOptions.defaults())
+                            .collectList()
+                            .block(Duration.ofSeconds(awaitSeconds));
+        } catch (Exception e) {
+            Throwable root = Exceptions.unwrap(e);
+            ModelException me = unwrapModelException(root);
             if (me != null) {
                 String summary = summarizeModelException(me);
                 log.warn(
@@ -262,14 +283,24 @@ public class MagAgentScopeRunService {
                         summary);
                 throw new IllegalStateException(summary, me);
             }
-            if (c instanceof RuntimeException re) {
+            if (root instanceof RuntimeException re) {
                 throw re;
             }
             throw new IllegalStateException(
-                    c != null ? c.getMessage() : "AgentScope execution failed", c);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Agent 编排被中断", e);
+                    root != null ? root.getMessage() : "AgentScope stream failed", root);
+        }
+
+        if (events == null) {
+            events = List.of();
+        }
+
+        long chatThreadId =
+                coordinationChatWriter.resolveThreadIdForCoordOrPmTask(
+                        agent.getProjectId(), MagAgentRunTaskContext.get());
+        try {
+            coordinationChatWriter.appendAgentScopeChatTurns(chatThreadId, agent.getId(), events);
+        } catch (Exception ex) {
+            log.warn("MAG 沟通气泡落库失败 agentId={}: {}", agent.getId(), ex.toString());
         }
 
         try {
@@ -278,6 +309,17 @@ public class MagAgentScopeRunService {
             log.warn("MAG session save failed agentId={}: {}", agent.getId(), e.toString());
         }
 
+        Msg reply = null;
+        for (int i = events.size() - 1; i >= 0; i--) {
+            Event ev = events.get(i);
+            Msg m = ev != null ? ev.getMessage() : null;
+            if (m != null
+                    && m.getRole() == MsgRole.ASSISTANT
+                    && StringUtils.hasText(m.getTextContent())) {
+                reply = m;
+                break;
+            }
+        }
         String text =
                 reply != null && StringUtils.hasText(reply.getTextContent())
                         ? reply.getTextContent().trim()
@@ -312,9 +354,16 @@ public class MagAgentScopeRunService {
                 new MagPeerInvokeTools(
                         projectId, triggerUserId, agentId, magAgentMapper, this::executeAgentRun));
 
+        if (!isPm && agent.getParentAgentId() == null) {
+            toolkit.registerTool(
+                    new MagMainAgentPmRequestTools(
+                            projectId, triggerUserId, agentId, magAgentMapper, this::executeAgentRun));
+        }
+
         if (isPm) {
             toolkit.registerTool(
-                    new MagPmDispatchTools(projectId, triggerUserId, agentId, magTaskService, magAgentMapper));
+                    new MagPmDispatchTools(
+                            projectId, triggerUserId, agentId, magTaskService, magModuleService, magAgentMapper));
             SubAgentConfig subCfg =
                     SubAgentConfig.builder()
                             .toolName("pm_delegate_reflection")
@@ -406,12 +455,18 @@ public class MagAgentScopeRunService {
                     + "你是项目经理：使用 list_dispatchable_agents、dispatch_task 协调产品、开发、测试等职能 Agent；"
                     + "派工前若不清楚执行人 id，必须先调用 list_dispatchable_agents；"
                     + "核查（VERIFY）角色绝不能作为 dispatch_task 的 assigneeAgentId。"
+                    + "每次派工后或需要掌握全局时，应调用 list_project_tasks 与 list_project_modules，"
+                    + "按任务 state（PENDING/IN_PROGRESS/BLOCKED/PENDING_VERIFY/VERIFYING/DONE）与模块覆盖分析进度与未完项；"
+                    + "若仍有明确缺口且可指派，继续 dispatch_task；若当前无合适新增任务、应等待执行方推进或等待各职能主 Agent 通过 mag_ask_pm_for_next_tasks 要活，"
+                    + "须在回复中简要说明进度结论与下一步等待点。"
+                    + "系统可能在任务核查结项（DONE）后自动触发你的一轮复盘编排，须按说明用工具检查是否仍有非 DONE 任务并决定是否再派工或声明本阶段已全部完成。"
                     + "需要结构化思考时可先用 pm_delegate_reflection（Agent as Tool）。"
                     + "若用户意图已明确，应调用工具完成派工并给出简短总结；回答须简洁。";
         }
         if ("PRODUCT".equals(agent.getRoleType())) {
             return base
                     + "你是产品职能：先 mag_read_requirement_doc 理解需求，再 mag_submit_dev_requirement_candidate 输出可评审的开发需求说明候选。"
+                    + coordinationHierarchySuffix(agent, isPm)
                     + "回答须简洁。";
         }
         if ("FRONTEND".equals(agent.getRoleType()) || "BACKEND".equals(agent.getRoleType())) {
@@ -419,15 +474,33 @@ public class MagAgentScopeRunService {
                     + "你是开发职能（"
                     + agent.getRoleType()
                     + "）：用 mag_record_implementation_plan 分别记录前端或后端实现要点，便于测试编写单测。"
+                    + coordinationHierarchySuffix(agent, isPm)
                     + "回答须简洁。";
         }
         if ("VERIFY".equals(agent.getRoleType())) {
             return base
                     + "你是测试/核查职能：对「待核查/核查中」任务须用 mag_submit_task_verification 提交 PASS（结项）或 FAIL（退回执行），"
                     + "并写明 rationale；可选用 mag_record_unit_test_plan 记录单测范围。"
+                    + coordinationHierarchySuffix(agent, isPm)
                     + "回答须简洁。";
         }
-        return base + "回答须简洁。";
+        return base + coordinationHierarchySuffix(agent, isPm) + "回答须简洁。";
+    }
+
+    /**
+     * 产品 §4.1–§4.2：主 Agent 向项目经理要派工（{@link MagMainAgentPmRequestTools}）；子 Agent 向主 Agent 协作。
+     */
+    private static String coordinationHierarchySuffix(MagAgent agent, boolean isPm) {
+        if (isPm) {
+            return "";
+        }
+        if (agent.getParentAgentId() == null) {
+            return " 你是本子线主 Agent（配置中无上级 parent_agent）：当本子线已无活可分、或需要项目经理补充/调整派工与优先级时，"
+                    + "应调用 mag_ask_pm_for_next_tasks(situationSummary) 触发项目经理 Agent 编排（对方将使用派工工具）。"
+                    + "子 Agent 勿调用该工具，应通过 invoke_peer_agent 联系主 Agent 或协调线程要活。 ";
+        }
+        return " 你是子 Agent（存在上级 parent_agent）：申领下一项工作时优先使用 invoke_peer_agent 联系主 Agent（instruction 写明当前任务与需要的下一项）；"
+                + "勿调用 mag_ask_pm_for_next_tasks。 ";
     }
 
     private static String buildUserLine(boolean isPm, MagAgent agent, String instruction) {
@@ -440,7 +513,8 @@ public class MagAgentScopeRunService {
                     + agent.getProjectId()
                     + "。\n用户/触发方说明："
                     + extra
-                    + "\n请按需调用工具完成派工或 peer 协作；若无需派工，简要回复即可。";
+                    + "\n请按需调用工具：派工前后可用 list_project_tasks、list_project_modules 看进度与未完项；"
+                    + "再决定继续 dispatch_task 或说明等待执行方/主 Agent 要活。若无需派工，可只做进度分析并简要回复。";
         }
         String extra =
                 StringUtils.hasText(instruction)

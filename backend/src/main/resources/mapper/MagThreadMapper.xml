@@ -16,6 +16,10 @@
 
     <select id="selectById" resultMap="BaseMap">SELECT * FROM mag_thread WHERE id = #{id}</select>
 
+    <select id="selectLatestByTaskId" resultMap="BaseMap">
+        SELECT * FROM mag_thread WHERE task_id = #{taskId} ORDER BY id DESC LIMIT 1
+    </select>
+
     <select id="selectByProjectId" resultMap="BaseMap">
         SELECT * FROM mag_thread WHERE project_id = #{projectId} ORDER BY id DESC
     </select>

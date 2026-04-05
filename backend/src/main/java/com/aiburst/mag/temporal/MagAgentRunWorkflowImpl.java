@@ -13,7 +13,7 @@ public final class MagAgentRunWorkflowImpl implements MagAgentRunWorkflow {
                     ActivityOptions.newBuilder().setStartToCloseTimeout(Duration.ofMinutes(10)).build());
 
     @Override
-    public String execute(long agentId, long triggerUserId, String instruction) {
-        return activities.executeAgentRun(agentId, triggerUserId, instruction);
+    public String execute(long agentId, long triggerUserId, String instruction, long taskContextTaskId) {
+        return activities.executeAgentRun(agentId, triggerUserId, instruction, taskContextTaskId);
     }
 }

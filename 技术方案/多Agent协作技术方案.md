@@ -122,12 +122,14 @@
 |-------------------------------------|----------|
 | `PENDING` | 待派发 |
 | `IN_PROGRESS` | 进行中（含核查不通过后退回） |
-| `PENDING_VERIFY` | 待核查（执行方已申报完成，等待核查 Agent 领取/调度） |
+| `PENDING_VERIFY` | 待核查（执行方已申报完成——**用户/API 或系统自动**均可，等待核查 Agent 领取/调度） |
 | `VERIFYING` | 核查中（Temporal Activity 或同步核查执行中） |
 | `DONE` | 已完成（**仅**核查 **PASS** 后写入，与 `mag_task_verification` 最新通过记录一致） |
 | `BLOCKED` | 阻塞（须 `block_reason` + `blocked_by_agent_id` 可空） |
 
 迁移规则（摘要）：`submit-complete` → `PENDING_VERIFY` 并启动/关联 Workflow；核查 **PASS** → `DONE`；**FAIL** → `IN_PROGRESS`；人工抽检若后续引入，不得跳过核查记录链。
+
+**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中至少一条，或编排结果摘要为**非占位**且达到实现侧最小长度阈值。**核查类**编排虽可带 `task_id`，但不满足执行方 assignee 条件，**不会**误触发自动申报。
 
 ### 4.4 核查（§4.5）
 
@@ -291,7 +293,7 @@
 | GET/POST | `/projects/{id}/threads` | 线程 |
 | GET/POST | `/threads/{id}/messages` | 消息（触发 Agent 可由 POST message 或独立 `/run`） |
 | GET/POST | `/projects/{id}/tasks` | 任务 |
-| POST | `/tasks/{id}/submit-complete` | 执行方申报完成 → `PENDING_VERIFY` + 启动 Workflow |
+| POST | `/tasks/{id}/submit-complete` | 执行方申报完成 → `PENDING_VERIFY` + 启动 Workflow（**显式**入口；**亦可**由系统在 §4.3.1「自动申报完成」规则满足时等价触发，无需用户点击） |
 | GET | `/tasks/{id}/verifications` | 核查历史 |
 | GET/PUT | `/projects/{id}/requirement-doc` | 需求文档当前/保存新版本 |
 | GET/POST | `/projects/{id}/requirement-pool` | 需求池 |

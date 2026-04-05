@@ -1,13 +1,16 @@
 package com.aiburst.mag.service;
 
 import com.aiburst.mag.MagConstants;
+import com.aiburst.mag.config.MagTaskAutomationProperties;
 import com.aiburst.mag.entity.MagOrchestrationRun;
+import com.aiburst.mag.event.MagOrchestrationAgentRunSucceededEvent;
 import com.aiburst.mag.mapper.MagOrchestrationRunMapper;
 import com.aiburst.mag.ws.MagWebSocketHub;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +36,9 @@ public class MagOrchestrationRunService {
     private final MagWebSocketHub webSocketHub;
     private final ObjectMapper objectMapper;
     private final MagAlertService alertService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final MagTaskAutomationProperties taskAutomationProperties;
+    private final MagTaskService taskService;
 
     @Transactional
     public void recordAgentTrigger(long projectId, long agentId, long userId, Map<String, Object> triggerResult) {
@@ -148,6 +154,26 @@ public class MagOrchestrationRunService {
                     pl.put("agentId", row.getAgentId());
                 }
                 alertService.raise(row.getProjectId(), row.getTaskId(), "ORCH_ACTIVITY_FAILED", "ERROR", pl);
+                taskService.applyAgentOrchestrationActivityFailure(
+                        row.getTaskId(),
+                        row.getRunKind(),
+                        row.getAgentId(),
+                        row.getTriggerUserId(),
+                        resultSummary);
+            } else if (MagConstants.ORCH_STATUS_SUCCEEDED.equals(status)
+                    && taskAutomationProperties.isAutoSubmitCompleteOnOrchestrationSuccess()
+                    && row.getTaskId() != null
+                    && row.getAgentId() != null
+                    && row.getTriggerUserId() != null
+                    && MagConstants.ORCH_RUN_KIND_AGENT.equals(row.getRunKind())) {
+                applicationEventPublisher.publishEvent(
+                        new MagOrchestrationAgentRunSucceededEvent(
+                                row.getProjectId(),
+                                row.getTaskId(),
+                                row.getAgentId(),
+                                row.getTriggerUserId(),
+                                row.getStartedAt(),
+                                resultSummary));
             }
         }
     }

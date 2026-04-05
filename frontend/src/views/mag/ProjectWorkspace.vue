@@ -877,7 +877,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import {
   magGetProject,
@@ -1157,6 +1157,41 @@ function openWorkOutputDetail(row) {
   workOutputDetailDlg.value = true
 }
 
+function notifyFromAlertPayload(alert) {
+  if (!alert) return
+  const type = alert.alertType
+  let title = type || '告警'
+  let message = ''
+  try {
+    const p = alert.payloadJson ? JSON.parse(alert.payloadJson) : {}
+    if (p.title) title = String(p.title)
+    if (p.message) message = String(p.message)
+  } catch {
+    /* ignore */
+  }
+  if (!message && alert.payloadJson) {
+    message = String(alert.payloadJson).slice(0, 240)
+  }
+  if (type === 'PROJECT_ALL_TASKS_DONE') {
+    ElNotification({
+      title,
+      message: message || '项目内全部任务均为已完成，请派发新任务。',
+      type: 'success',
+      duration: 0,
+    })
+    return
+  }
+  const level = alert.level
+  if (level === 'ERROR' || level === 'WARN') {
+    ElNotification({
+      title,
+      message: message || '(无说明)',
+      type: level === 'ERROR' ? 'error' : 'warning',
+      duration: 6000,
+    })
+  }
+}
+
 function setupMagWs() {
   magWs.disconnect()
   const pid = projectId.value
@@ -1173,6 +1208,13 @@ function setupMagWs() {
         Number(data?.projectId) === Number(projectId.value)
       ) {
         loadOrchestrationRuns()
+      }
+      if (data?.event === 'mag.alert.new' && Number(data?.projectId) === Number(projectId.value)) {
+        loadAlerts()
+        if (tab.value === 'tasks') {
+          loadTasks()
+        }
+        notifyFromAlertPayload(data.alert)
       }
     },
   })

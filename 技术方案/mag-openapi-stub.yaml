@@ -79,6 +79,8 @@ paths:
     post:
       tags: [mag-task]
       summary: 申报完成 → PENDING_VERIFY + Workflow
+      description: >
+        将进行中任务申报为待核查。与产品 §4.5 一致：不直落 DONE。系统也可在编排成功且满足产出物等规则时自动等价调用（见技术方案 §4.3.1），本接口为显式人工/API 入口。
       parameters:
         - $ref: '#/components/parameters/TaskId'
         - $ref: '#/components/parameters/IdempotencyKey'
