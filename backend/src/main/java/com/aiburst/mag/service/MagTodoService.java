@@ -7,7 +7,7 @@ import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.dto.MagPageQuery;
 import com.aiburst.mag.entity.MagRequirementPoolItem;
 import com.aiburst.mag.mapper.MagRequirementPoolItemMapper;
-import com.aiburst.security.PermissionCacheService;
+import com.aiburst.rbac.service.PermissionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

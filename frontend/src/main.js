@@ -5,7 +5,7 @@ import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
-import { permissionDirective } from './directives/permission'
+import { permissionDirective } from './rbac/permission'
 
 const app = createApp(App)
 const pinia = createPinia()

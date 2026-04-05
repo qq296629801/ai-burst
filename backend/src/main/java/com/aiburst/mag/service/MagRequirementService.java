@@ -20,7 +20,7 @@ import com.aiburst.mag.mapper.MagRequirementPoolItemMapper;
 import com.aiburst.mag.mapper.MagRequirementRevisionMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
-import com.aiburst.security.PermissionCacheService;
+import com.aiburst.rbac.service.PermissionCacheService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

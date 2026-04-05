@@ -5,7 +5,7 @@ import com.aiburst.dto.UserPageQuery;
 import com.aiburst.dto.UserSaveRequest;
 import com.aiburst.entity.SysUser;
 import com.aiburst.mapper.UserMapper;
-import com.aiburst.security.PermissionCacheService;
+import com.aiburst.rbac.service.PermissionCacheService;
 import com.aiburst.security.SecurityUtils;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
