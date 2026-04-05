@@ -132,7 +132,7 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
 
     @Test
     @WithMockMagUser(authorities = {"mag:project:list", "mag:req:edit"})
-    void requirement_doc_pool_revisions_diff_analyze() throws Exception {
+    void requirement_doc_revisions_diff_analyze() throws Exception {
         when(requirementService.getDoc(eq(1L), anyLong())).thenReturn(Map.of("content", "x"));
         mockMvc.perform(get("/api/mag/projects/1/requirement-doc")).andExpect(status().isOk());
 
@@ -153,27 +153,6 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
                         .content("{\"changeSummary\":\"scope\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.traceId").value("t1"));
-
-        when(requirementService.listPool(eq(1L), anyLong())).thenReturn(List.of());
-        mockMvc.perform(get("/api/mag/projects/1/requirement-pool")).andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:pool:decide"})
-    void requirement_pool_decide() throws Exception {
-        mockMvc.perform(post("/api/mag/requirement-pool/5/decide")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"decision\":\"APPROVE_AS_IS\"}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:req:edit"})
-    void requirement_pool_productClose() throws Exception {
-        mockMvc.perform(post("/api/mag/requirement-pool/7/product-close")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"conclusionSummary\":\"done\"}"))
-                .andExpect(status().isOk());
     }
 
     @Test
@@ -240,52 +219,10 @@ class MagRestEndpointsWebTest extends AbstractMagControllersSliceTest {
     }
 
     @Test
-    @WithMockMagUser(authorities = {"mag:audit:fetch:view"})
-    void fetchAudit() throws Exception {
-        when(fetchAuditService.listByProject(eq(1L), anyLong())).thenReturn(List.of());
-        mockMvc.perform(get("/api/mag/projects/1/fetch-audit")).andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:project:list", "mag:agent:manage"})
-    void pmAssist_andImprovements() throws Exception {
-        when(pmAssistService.list(eq(1L), anyLong())).thenReturn(List.of());
-        mockMvc.perform(get("/api/mag/projects/1/pm-assist")).andExpect(status().isOk());
-
-        when(improvementLogService.list(eq(1L), eq(2L), anyLong())).thenReturn(List.of());
-        mockMvc.perform(get("/api/mag/projects/1/agents/2/improvements")).andExpect(status().isOk());
-    }
-
-    @Test
     @WithMockMagUser(authorities = {"mag:dashboard:view"})
     void dashboardSnapshot() throws Exception {
         when(dashboardService.snapshot(eq(1L), anyLong())).thenReturn(Map.of("taskCountByState", Map.of()));
         mockMvc.perform(get("/api/mag/dashboard/snapshot").param("projectId", "1")).andExpect(status().isOk());
     }
 
-    @Test
-    @WithMockMagUser(authorities = {"mag:pool:decide"})
-    void todosPage() throws Exception {
-        when(todoService.page(anyLong(), any())).thenReturn(new PageResult<>(0, List.of()));
-        mockMvc.perform(get("/api/mag/todos").param("pageNum", "1").param("pageSize", "10"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:project:list"})
-    void releases_list() throws Exception {
-        when(releaseService.list(eq(1L), anyLong())).thenReturn(List.of());
-        mockMvc.perform(get("/api/mag/projects/1/releases")).andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockMagUser(authorities = {"mag:project:list"})
-    void work_outputs_aggregated() throws Exception {
-        when(workOutputService.listAggregated(eq(1L), anyLong(), anyInt(), anyInt(), anyInt()))
-                .thenReturn(Map.of("items", List.of(Map.of("kind", "IMPROVEMENT", "summary", "plan"))));
-        mockMvc.perform(get("/api/mag/projects/1/work-outputs").param("improvementLimit", "50"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(0))
-                .andExpect(jsonPath("$.data.items[0].kind").value("IMPROVEMENT"));
-    }
 }

@@ -4,7 +4,6 @@ import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagConstants;
 import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.entity.MagProject;
-import com.aiburst.mag.entity.MagRequirementPoolItem;
 import com.aiburst.mag.mapper.MagProjectMapper;
 import com.aiburst.mag.mapper.MagProjectMemberMapper;
 import lombok.RequiredArgsConstructor;
@@ -43,19 +42,4 @@ public class MagAccessHelper {
         return MagConstants.ROLE_OWNER.equals(memberMapper.selectRole(projectId, userId));
     }
 
-    /**
-     * §16.2：具备 mag:pool:decide 前提下，OWNER 或 未指派/指派给自己 可见。
-     */
-    public boolean canSeePoolItem(MagRequirementPoolItem item, Long userId, String role, boolean hasPoolDecidePerm) {
-        if (!hasPoolDecidePerm) {
-            return false;
-        }
-        if (MagConstants.ROLE_OWNER.equals(role)) {
-            return true;
-        }
-        if (item.getAssignedDeciderUserId() == null) {
-            return true;
-        }
-        return item.getAssignedDeciderUserId().equals(userId);
-    }
 }

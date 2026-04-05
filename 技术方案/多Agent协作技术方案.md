@@ -2,7 +2,9 @@
 
 > **编制关系**：本文以 [产品/多Agent协作与项目管理产品线需求.md](../产品/多Agent协作与项目管理产品线需求.md) 为**唯一能力来源**；产品 **§2.1 全量模块**与正文各节功能**不得在技术方案中默示删减**。实施排期可分期上线，但**设计覆盖范围**须与产品全文一致；**逐项对照与缺口清零**见 **§17**。  
 > 对应产品需求：[产品/多Agent协作与项目管理产品线需求.md](../产品/多Agent协作与项目管理产品线需求.md)  
-> 关联升级决策：JDK **24**、Spring Boot **3.5+**（须官方支持 JDK 24 的 BOM）；**AgentScope Java**、**Temporal**（**Docker** 部署）、**WebSocket** 大屏、首期知识库**关键词/标签**、定时任务 **Redis 锁**、外网检索 **Agent 工具经服务端代理出站**（**不做 URL/域名白名单**；**能成功拉取且未命中 SSRF 黑名单即允许**）；项目成员**不设**「仅负责拍板」独立角色；需求正文 **MySQL MEDIUMTEXT 落库**（首期不拆 MinIO 大对象）。
+> 关联升级决策：JDK **24**、Spring Boot **3.5+**（须官方支持 JDK 24 的 BOM）；**AgentScope Java**、**Temporal**（**Docker** 部署）、**WebSocket** 大屏、首期知识库**关键词/标签**、定时任务 **Redis 锁**；项目成员**不设**「仅负责拍板」独立角色；需求正文 **MySQL MEDIUMTEXT 落库**（首期不拆 MinIO 大对象）。
+
+> **当前代码库已移除（与下文部分章节不一致）**：表 `mag_requirement_pool_item`、`mag_release_archive`、`mag_pm_assist_record`、`mag_agent_improvement_log` 及对应 REST、`mag:pool:decide` / `mag:release:archive` 菜单权限、待办聚合、`work-outputs` 聚合、发版→`ARCHIVE_REFLOW` 知识库写入、开发/测试侧「改进日志」Agent 工具。产品工具仍可将开发需求说明**直接合并**进 `mag_requirement_revision`；任务自动申报完成以编排**非空最终回复**为条件（见 `application.yml`）。
 
 ---
 
@@ -18,7 +20,7 @@
 | **定时任务** | **`@Scheduled` + Redis 分布式锁** |
 | **知识库（首期）** | **MySQL 全文 / 标签 / 关键词**（二期向量库另案） |
 | **大屏** | **WebSocket** |
-| **外网检索** | **服务端代理**；**由大模型/Agent 决定 URL**，**拉取成功即可用**；**强制 SSRF 黑名单** + **全量 `mag_external_fetch_audit`**；**不做白名单**（无 URL/host 允许名单配置） |
+| **外网检索** | **本期不建设**独立外网代理工具与审计表；成熟产品检索等留痕以 **需求池 `payload_json`**、**线程消息** 等为准（见 §17） |
 | **Agent 栈** | **AgentScope Java**（`io.agentscope:agentscope-core`）为主 |
 | **数据保留** | `mag_message`、`mag_agent_improvement_log` 等 **永久保留**（不自动 TTL 删除），依赖平台备份与容量规划 |
 | **归档→知识库** | `quality_flag=1` **自动**写入 `mag_kb_entry`（`ARCHIVE_REFLOW`） |
@@ -34,7 +36,7 @@
 | 2 | 定时任务（多实例） | **`@Scheduled` + Redis 分布式锁** |
 | 3 | 知识库（首期） | **MySQL 全文 / 标签 / 关键词**（二期向量） |
 | 4 | 大屏 | **WebSocket** |
-| 5 | 外网检索 | **代理 + Agent 驱动 URL + SSRF 黑名单 + 全量审计**（**不做白名单**） |
+| 5 | 外网检索 | **本期不实现**出站抓取与 `mag_external_fetch_audit`；留痕走池与消息 |
 | 6 | Agent 栈 | **AgentScope Java** 为主 |
 | 7 | 运行环境 | 应用与 Temporal **Docker** 化交付（镜像 JDK 24） |
 
@@ -80,7 +82,7 @@
 | §4.1～§4.4 主/子、协调、阻塞、可观测 | §17.5；`parent_agent_id`、`mag_thread`/`mag_message`、阻塞字段、筛选查询 §9 |
 | §4.5 任务结项 | 申报完成直落 `DONE`；状态 §4.3.1；无独立核查 Agent 表 |
 | §5.1～§5.8 项目管理 | §17.6；各子节见表内 |
-| §5.6.1 成熟产品检索 | Fetch Activity + `mag_external_fetch_audit`；池 `payload_json` 留痕 §17.7 |
+| §5.6.1 成熟产品检索 | 池 `payload_json`、协调消息等留痕 §17.7（无独立外网审计表） |
 | §6.1～§6.3 需求文档与池 | §17.7；`mag_requirement_*`、池状态 §19.1 |
 | §7 权限 | §17.8；§10、`sys_permission` Flyway |
 | §8 非功能 | §17.9；§12、§16.4～§16.6 |
@@ -127,7 +129,7 @@
 
 迁移规则（摘要）：`submit-complete`：`IN_PROGRESS` → `DONE`（可清空 `temporal_workflow_id`）。
 
-**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**（派工自动执行等场景）；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；**产出物**判定为编排 **`started_at`** 起该 Agent 在 **`mag_agent_improvement_log`** 中**至少一条**（仅凭模型长回复不落库改进日志则**不**自动申报）。
+**自动申报完成（与实现对齐，可配置）**：除 `POST /tasks/{id}/submit-complete` 外，系统在满足规则时可**等价写入**上述迁移（同一状态机与流程事件，事务在编排成功落库**提交之后**再尝试）。配置项 **`aiburst.mag.task.auto-submit-complete-on-orchestration-success`**（默认 `true`，可在 `application.yml` 关闭）。**触发要点**：`mag_orchestration_run` 为 **AGENT**、**成功结束**，且记录上关联 **`task_id`**；任务仍为 **`IN_PROGRESS`** 且 **`assignee_agent_id`** 与本次编排 Agent 一致；编排**最终回复**（`result_summary` 等）**trim 后非空**即视为可自动申报（**不再**依赖改进日志表）。
 
 ### 4.4 项目经理协助与告警
 
@@ -151,19 +153,13 @@
 | **mag_release_archive** | 发版记录：版本号、时间、`snapshot_json`（或 MinIO key）、`quality_flag`（是否优质回流） |
 | **mag_kb_entry** | 知识库条目：`source`（ARCHIVE_REFLOW/MANUAL）、`title`、`body`、`tags`（JSON）、`keywords`、`archive_id` 可空；**FULLTEXT(title,body)** + 标签索引 |
 
-### 4.7 外部检索审计
-
-| 表名 | 说明 |
-|------|------|
-| **mag_external_fetch_audit** | URL（规范化 host）、用户/项目、`http_status`、截断正文 hash、时间 |
-
-### 4.8 定时任务配置（可选）
+### 4.7 定时任务配置（可选）
 
 | 表名 | 说明 |
 |------|------|
 | **mag_scheduled_job_config** | `job_key`、`cron`、`enabled`、`project_id` 可空、`last_run_at` |
 
-### 4.9 Agent 改进日志（产品 §5.3）
+### 4.8 Agent 改进日志（产品 §5.3）
 
 | 表名 | 说明 |
 |------|------|
@@ -183,7 +179,7 @@
 
 ### 5.2 Agent 与工具（Tools）
 
-- **职能 Agent**：工具可包括 — `searchOrgKb`（SQL LIKE + FULLTEXT）、**`fetchUrl`（或同名）**：经 **服务端 HTTP 客户端**出站，**由模型给出 URL**；**不做白名单**，**响应成功即可进入后续推理**；须过 **SSRF 黑名单**（见 §12）；写 **`mag_external_fetch_audit`**；`appendThreadMessage`、`updateTaskState`（受策略约束）等；**具体清单**在实现期按 **角色** 注册为 AgentScope **`Toolkit`**。
+- **职能 Agent**：工具可包括 — `searchOrgKb`（SQL LIKE + FULLTEXT）；`appendThreadMessage`、`updateTaskState`（受策略约束）等；**具体清单**在实现期按 **角色** 注册为 AgentScope **`Toolkit`**。**本期不包含**服务端代拉外网 URL 工具及 `mag_external_fetch_audit`。
 - **记忆**：短期可用 AgentScope **Memory** 绑定 `thread_id`；长期摘要可写入 `mag_message`（SYSTEM）。
 
 ### 5.3 编排与 Temporal 的分工
@@ -356,7 +352,7 @@
 ## 12. 安全与非功能
 
 - **隔离**：所有查询带 `project_id` 与成员校验；Agent 运行上下文 **禁止** 注入其他 `project_id`。
-- **外网抓取（已确认口径）**：**由 Agent/大模型发起检索**，服务端 **代拉 URL**；**不做白名单**（无允许域名/host 列表前置校验）——**技术上能成功获取的响应即可供模型使用**（含需登录站若工具链将来扩展 Cookie/头，另案）。**仍须**：① **全量审计** `mag_external_fetch_audit`；② **SSRF 防护**——默认 **拒绝** 解析到 **内网/链路本地/metadata** 的地址（如 `127.0.0.0/8`、`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`、`169.254.0.0/16`、`::1`、`metadata.google.internal` 等，可配置扩展）；③ **单响应最大字节**与 **总超时**。
+- **外网抓取**：**本期不建设**服务端代拉 URL 与审计表；若二期引入出站抓取，须另立 SSRF 黑名单、超时与字节上限等方案。
 - **密钥**：沿用 LLM 方案 AES；Temporal Payload 中**不存** apiKey。
 - **观测**：Micrometer（Temporal、LLM 调用耗时、WS 连接数）；关键业务日志带 `projectId`、`taskId`、`workflowId`。
 
@@ -369,8 +365,6 @@
 | `aiburst.mag.temporal.target` | Temporal 前端地址 |
 | `aiburst.mag.temporal.namespace` | 默认 `default` |
 | `aiburst.mag.redis.lock-prefix` | 锁前缀 |
-| `aiburst.mag.fetch.ssrf-blocklist-cidrs` | SSRF 拒绝网段（默认内置 RFC1918 等，可追加） |
-| `aiburst.mag.fetch.max-bytes` | 单响应体上限 |
 | `aiburst.mag.kb.reflow-mode` | **已确认 `auto`**（`quality_flag=1` 自动入库）；保留 `manual_review` 供将来回滚 |
 | `aiburst.mag.notify.qq.enabled` | 是否启用 **QQ 机器人** 外呼 |
 | `aiburst.mag.notify.qq.webhook-url` | QQ Bot / 中间层 **HTTP 回调地址**（具体协议与签名见实现 README） |
@@ -390,14 +384,14 @@
 3. **AgentScope Java** 桥接通道 + 单线程对话 MVP。  
 4. **Temporal** 接入（编排 Activity；任务结项由应用服务 `submit-complete`）。  
 5. **WebSocket** 大屏 + 告警事件。  
-6. 需求池、升级链、外网代理、定时 Redis 锁 job；**要活/阻塞/协助记录/改进日志/模块树**等 §9 增补接口。  
+6. 需求池、升级链、定时 Redis 锁 job；**要活/阻塞/协助记录/改进日志/模块树**等 §9 增补接口。  
 7. 发版归档与知识库回流；**变更影响分析**与**版本 diff**；**蓝图引用** API。
 
 ---
 
 ## 15. DDL 草案（Flyway `V3__mag_module.sql` 骨架）
 
-以下为 **MAG 库表在文档中的合并表述**：**`V3__mag_module.sql`** 为初始建表；**`V11__remove_task_verification.sql`** 删除 `mag_task_verification`，将任务状态中的待核查/核查中统一迁移为已完成，并将 `role_type = VERIFY` 的 Agent 改为 `TEST`。下列 DDL **已按 V3+V11 后的有效结构整理**（字段长度、索引仍以仓库内迁移脚本为最终准绳）。与 `V1`/`V2` 风格一致（InnoDB、utf8mb4）。**外键**可选（先建表后加 FK 避免顺序问题）。**权限种子**见 `V4__mag_permission_seed.sql`（§19.6）。
+以下为 **MAG 库表在文档中的合并表述**：**`V3__mag_module.sql`** 为初始建表；**`V11__remove_task_verification.sql`** 删除 `mag_task_verification`；**`V12__remove_external_fetch_audit.sql`** 删除 `mag_external_fetch_audit` 及 `mag:audit:fetch:view` 权限。下列 DDL **已按 V3+V11+V12 后的有效结构整理**（字段长度、索引仍以仓库内迁移脚本为最终准绳）。与 `V1`/`V2` 风格一致（InnoDB、utf8mb4）。**外键**可选（先建表后加 FK 避免顺序问题）。**权限种子**见 `V4__mag_permission_seed.sql`（§19.6）。
 
 ```sql
 -- 项目
@@ -580,17 +574,6 @@ CREATE TABLE mag_alert_event (
     KEY idx_project_time (project_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE mag_external_fetch_audit (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    project_id BIGINT NULL,
-    user_id BIGINT NULL,
-    normalized_url VARCHAR(1024) NOT NULL,
-    http_status INT NULL,
-    body_hash VARCHAR(64) NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_time (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE mag_scheduled_job_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     job_key VARCHAR(64) NOT NULL UNIQUE,
@@ -612,7 +595,7 @@ CREATE TABLE mag_scheduled_job_config (
 ### 16.1 组织知识库与归档回流
 
 - **准入**：`mag_release_archive.quality_flag = 1` 表示**候选**优质；**已确认**：由定时或发版后任务 **自动** 生成 `mag_kb_entry`（`source=ARCHIVE_REFLOW`，可附 `archive_id`）。配置 **`aiburst.mag.kb.reflow-mode=auto`**（默认）；保留 `manual_review` 供将来回滚。
-- **检索**：首期 **FULLTEXT + 标签/关键词**；组织知识库检索范围 = 组织可见条目 + 本项目授权；外网拉取留痕见 **`mag_external_fetch_audit`**（§12）。
+- **检索**：首期 **FULLTEXT + 标签/关键词**；组织知识库检索范围 = 组织可见条目 + 本项目授权。
 
 ### 16.2 待办与需求池读模型
 
@@ -631,11 +614,9 @@ CREATE TABLE mag_scheduled_job_config (
 
 - **数据源**：以 **`mag_task` 状态迁移时间戳**（及可选 `mag_task_state_log`）为主：**周期内进入 DONE 的数量**、**平均停留时长**；**不包含** MinIO/代码托管 unless 二期对接。
 
-### 16.5 外网检索（已确认口径）
+### 16.5 外网检索
 
-- **策略**：**大模型/Agent 自主决定检索 URL**；服务端 **代理拉取**，**不做白名单**——**HTTP 层面能成功拿到响应体即可**供后续推理（登录态/Cookie 若未来要支持，单独加工具能力，不本文展开）。
-- **安全底线**：**SSRF 黑名单**（§12）+ **全量 `mag_external_fetch_audit`** + **超时与最大字节**（**不另设 URL 允许名单**）。
-- **失败**：拉取失败时 Activity 记录原因并写入审计；**审计必写**。
+- **本期**：不实现服务端代拉外网 URL，**无** `mag_external_fetch_audit`；检索结论由 Agent 写入 **需求池 `payload_json`**、**线程消息** 等。
 
 ### 16.6 数据生命周期与灾备（已确认）
 
@@ -695,7 +676,7 @@ CREATE TABLE mag_scheduled_job_config (
 | 产品类型 | `role_type` | 技术要点 |
 |----------|-------------|----------|
 | 项目经理（PM）Agent | `PM` | 派工工具、读 `mag_module`/任务；写 `mag_pm_assist_record`；升级链路入口 |
-| 产品 Agent | `PRODUCT` | 维护需求修订；`searchOrgKb` + `fetchUrl`；写需求池 `payload_json`（对比择优、检索留痕）；窄口径创建 `PENDING_USER` |
+| 产品 Agent | `PRODUCT` | 维护需求修订；`searchOrgKb`；写需求池 `payload_json`（对比择优、检索留痕） |
 | 后端开发 Agent | `BACKEND` | 子 Agent `parent` 指向主后端实例 |
 | 前端开发 Agent | `FRONTEND` | 同上 |
 | 测试 Agent | `TEST` | `mag_record_unit_test_plan` 等测试侧工具；任务申报完成与其余职能一致 |
@@ -715,7 +696,7 @@ CREATE TABLE mag_scheduled_job_config (
 | **§5.4** | 定时任务可配置、结果可见 | `mag_scheduled_job_config` + 执行日志痕迹 |
 | **§5.5** | 大屏实时、Agent 状态、效率、告警类型 | WS 事件 + §16.4；`STALL`、`PM_ESCALATION` 等 `alert_type` |
 | **§5.6～5.6.2** | 升级顺序、协助记录、待办入口 | 工作流 + 表；§16.2 |
-| **§5.6.1** | 成熟产品四条件、不命中情形 | `fetch` 审计 + 池记录字段；**过滤规则**（排除 Demo）配置项 `aiburst.mag.product-search.min-signal`（实现期命名可调） |
+| **§5.6.1** | 成熟产品四条件、不命中情形 | 池 `payload_json` 等字段；**过滤规则**（排除 Demo）配置项 `aiburst.mag.product-search.min-signal`（实现期命名可调） |
 | **§5.7** | 归档内容清单 | `snapshot_json` **模式**（JSON Schema 实现期固定）：含方案对比、协调问题、停滞原因、协助摘要、模块标签等键 |
 | **§5.8** | 隔离与受控共享 | §12；跨项目 **禁止** 默认带 `project_id` 外键写入；蓝图复制显式 API + 审计 |
 
@@ -727,7 +708,7 @@ CREATE TABLE mag_scheduled_job_config (
 
 ### 17.8 与产品 §7「权限与安全」
 
-- RBAC `mag:*` + 项目成员校验 **双因子**（所有 `projectId` 接口）；组织知识库 **引用/复制蓝图** 建议单独权限码 **`mag:kb:blueprint:import`**（Flyway 种子与 §10 表同步增补），或暂由 `mag:kb:manage` 与 `mag:project:manage` 组合代行（实现期二选一并在 §10 明示）；跨项目引用须 **审计**（`mag_external_fetch_audit` / 可选 `mag_audit_log`）。
+- RBAC `mag:*` + 项目成员校验 **双因子**（所有 `projectId` 接口）；组织知识库 **引用/复制蓝图** 建议单独权限码 **`mag:kb:blueprint:import`**（Flyway 种子与 §10 表同步增补），或暂由 `mag:kb:manage` 与 `mag:project:manage` 组合代行（实现期二选一并在 §10 明示）；跨项目引用须 **留痕**（消息/池项/归档等）。
 - 脱敏：消息查询接口按角色掩码敏感字段。
 
 ### 17.9 与产品 §8「非功能」
@@ -752,7 +733,7 @@ CREATE TABLE mag_scheduled_job_config (
 | 8 | 仅 5.6 窄口径须用户拍板后落库 | 池状态 `PENDING_USER` + `decide` API + Workflow Signal |
 | 9 | 运营大屏展示是否在干活与产出效率；停摆与 PM 无法协调可见告警 | §8 事件 + `GET .../dashboard/snapshot` + `mag_alert_event` |
 | 10 | 派工后无法执行可向 PM 说明原因；可查 PM 协助了哪些问题与哪些 Agent | `POST .../block` + `mag_pm_assist_record` + 消息 |
-| 11 | 升级产品后：命中成熟产品时已闭环记录符合 5.6.1；多竞品有对比择优留痕 | 池 `payload_json` 键完整 + `mag_external_fetch_audit` |
+| 11 | 升级产品后：命中成熟产品时已闭环记录符合 5.6.1；多竞品有对比择优留痕 | 池 `payload_json` 键完整 |
 | 12 | 仅窄口径产生待用户拍板；已登录用户在待办与/或需求池可处理 | `GET /todos` + 需求池列表 §16.2；待办聚合他类为可选 |
 | 13 | 组织知识库可见归档回流与人工录入；产品 Agent 可检索 | `mag_kb_entry` + 工具 `searchOrgKb` |
 | 14 | 发版生成归档，含协调问题、停滞原因与经验摘要；项目隔离；新项目可引用/复制蓝图 | `mag_release_archive` + `POST .../import-blueprint` + §12 隔离校验 |
@@ -766,7 +747,7 @@ CREATE TABLE mag_scheduled_job_config (
 | 通知与告警订阅 | §16.3；订阅者 = WS 连接 + 角色 `mag:dashboard:view`；事件：拍板创建、告警、`POOL_REMINDER`；静默 `config_json.quietHours` |
 | 产出物与效率指标 | §16.4；首期以任务状态时间戳为主；**交付物更新频次** 可用 `mag_message`/`task.updated_at` 代理，MinIO 二期 |
 | Agent 编排与韧性 | §5.4；预算 `config_json`；死循环告警 §5.4 |
-| 外部检索合规 | **与产品 §5.6 已确认「能拉取成功即可」**；合规靠 **审计 + SSRF 黑名单 + 摘要不落全量版权内容**（检索结果截断入库 hash）；产品 §11「白名单」与平台决策 **不做 URL 白名单** 不一致时 **以 §0/§12/§18 决策为准**，版权遵循「摘要与链接引用」 |
+| 外部检索合规 | **本期无出站抓取与审计表**；合规与引用规范在需求池/消息正文与人工编辑需求文档中体现；若二期引入代拉 URL，再单列 SSRF 与版权口径 |
 | 数据生命周期 | §16.6 |
 | 灾难恢复 | §16.6 RPO/RTO 跟随平台 |
 
@@ -789,8 +770,8 @@ CREATE TABLE mag_scheduled_job_config (
 | 1 | `mag_message` / `mag_agent_improvement_log` 保留 | **永久保留**（不自动按天删除） |
 | 2 | `quality_flag=1` → 知识库 | **自动**写入 `mag_kb_entry` |
 | 3 | 站外通知 | **可接 QQ 机器人**（Webhook 等，见 §13 与 §16.3）；与 WS/DB 并存 |
-| 4 | 外网检索 | **大模型/Agent 自主检索**；**能拉取成功即可**；仍须 **代理 + 审计 + SSRF 黑名单**（§12） |
-| 5 | URL/host 白名单 | **不做**（不实现允许名单；与第 4 条一致） |
+| 4 | 外网检索 | **本期不实现**服务端代拉与 `mag_external_fetch_audit` |
+| 5 | URL/host 白名单 | **不适用**（无本期出站抓取） |
 
 后续若变更上述口径，请在本表追加行并注明日期与评审记录。
 
@@ -835,9 +816,6 @@ CREATE TABLE mag_scheduled_job_config (
 | 41014 | `MAG_POOL_STATE_INVALID` | 409 | 需求池项非待拍板态却调用 decide |
 | 41020 | `MAG_TEMPORAL_START_FAILED` | 502 | 启动/信号 Workflow 失败（Temporal 不可用或参数非法） |
 | 41021 | `MAG_TEMPORAL_QUERY_TIMEOUT` | 504 | 等待 Workflow/Activity 结果超时（若暴露同步接口） |
-| 41030 | `MAG_FETCH_SSRF_BLOCKED` | 403 | `fetchUrl` 命中 SSRF 黑名单 |
-| 41031 | `MAG_FETCH_TOO_LARGE` | 413 | 响应体超过 `max-bytes` |
-| 41032 | `MAG_FETCH_FAILED` | 502 | 出站 HTTP 失败且无可解析正文（审计已写） |
 | 41999 | `MAG_UNKNOWN` | 500 | 未分类域错误（应记日志并迭代补码） |
 
 **约定**：成功仍为 `code=0`；与现有 `ResultCode` 重复的 400/401/403 等可继续直接用全局码，**域内细分**优先用 41xxx。
@@ -905,6 +883,7 @@ QQ 侧将 `title` + `summary` + 链接（若配置 `aiburst.mag.notify.qq.detail
 | [docker-compose.temporal.yml](../docker-compose.temporal.yml) | Temporal + PostgreSQL + UI（开发） |
 | [backend/.../V3__mag_module.sql](../backend/src/main/resources/db/migration/V3__mag_module.sql) | `mag_*` 表 |
 | [backend/.../V11__remove_task_verification.sql](../backend/src/main/resources/db/migration/V11__remove_task_verification.sql) | 移除 `mag_task_verification`；迁移任务/Agent 角色 |
+| [backend/.../V12__remove_external_fetch_audit.sql](../backend/src/main/resources/db/migration/V12__remove_external_fetch_audit.sql) | 删除 `mag_external_fetch_audit`；移除 `mag:audit:fetch:view` |
 | [backend/.../V4__mag_permission_seed.sql](../backend/src/main/resources/db/migration/V4__mag_permission_seed.sql) | `mag:*` 菜单与权限种子 |
 | [技术方案/mag-openapi-stub.yaml](mag-openapi-stub.yaml) | OpenAPI 3.0 路径草案（§19.2） |
 

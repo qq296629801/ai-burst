@@ -55,7 +55,7 @@ aiburst:
     task:
       # 派工（及「待处理」态改派）后自动提交执行 Agent 编排，编排受理成功后将任务置为进行中
       auto-start-on-dispatch: true
-      # 关联任务的执行方 Agent 编排成功且本次时间窗内已有 mag_agent_improvement_log 时，自动申报完成（进入已完成）；关闭后仅可手动申报
+      # 关联任务的执行方 Agent 编排成功且编排最终回复非空时，自动申报完成（进入已完成）；关闭后仅可手动申报
       auto-submit-complete-on-orchestration-success: true
       # 任务结项（DONE）后自动拉起项目经理 Agent 复盘全项目任务/模块
       auto-pm-review-after-task-done: true

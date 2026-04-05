@@ -9,7 +9,6 @@ servers:
 tags:
   - name: mag-project
   - name: mag-task
-  - name: mag-todo
 paths:
   /api/mag/projects:
     get:
@@ -89,7 +88,7 @@ paths:
       tags: [mag-task]
       summary: 申报完成 — 进行中 → 已完成（DONE）
       description: >
-        将进行中任务标记为已完成。系统也可在编排成功且满足产出物等规则时自动等价调用（见技术方案 §4.3.1），本接口为显式人工/API 入口。
+        将进行中任务标记为已完成。系统也可在编排成功且编排最终回复非空时自动等价调用（可配置），本接口为显式人工/API 入口。
       parameters:
         - $ref: '#/components/parameters/TaskId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -98,16 +97,6 @@ paths:
           description: OK
         '409':
           description: 状态不允许 / 乐观锁冲突 — 见 §19.7
-  /api/mag/todos:
-    get:
-      tags: [mag-todo]
-      summary: 当前用户待拍板聚合
-      parameters:
-        - $ref: '#/components/parameters/PageNum'
-        - $ref: '#/components/parameters/PageSize'
-      responses:
-        '200':
-          description: OK
 components:
   parameters:
     ProjectId:

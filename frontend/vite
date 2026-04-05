@@ -1,0 +1,23 @@
+
+
+  VITE v5.4.21  ready in 145 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+5:13:53 PM [vite] hmr update /src/vie
+5:13:53 PM [vite] hmr update /src/views/mag/ProjectWorkspace.vue
+5:13:54 PM [vite] hmr update /src/vie
+5:13:54 PM [vite] hmr update /src/views/mag/ProjectWorkspace.vue (x2)
+5:13:55 PM [vite] hmr update /src/vie
+5:13:55 PM [vite] hmr update /src/views/mag/ProjectWorkspace.vue?vue&type=
+5:13:55 PM [vite] hmr update /src/views/mag/ProjectWorkspace.vue?vue&type=style&index=0&scoped=2b9655c6&lang.cs
+5:13:55 PM [vite] hmr update /src/views/mag/ProjectWorkspace.vue?vue&type=style&index=0&scoped=2b9655c6&lang.css
+^Cburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev
+zsh: command not found: devçburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev
+zsh: command not found: devburst-frontend@0.1.0 dev

@@ -15,7 +15,6 @@ import com.aiburst.mag.entity.MagMessage;
 import com.aiburst.mag.entity.MagModule;
 import com.aiburst.mag.entity.MagTask;
 import com.aiburst.mag.entity.MagThread;
-import com.aiburst.mag.mapper.MagAgentImprovementLogMapper;
 import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.mapper.MagMessageMapper;
 import com.aiburst.mag.mapper.MagModuleMapper;
@@ -66,7 +65,6 @@ public class MagTaskService {
     private final ApplicationEventPublisher eventPublisher;
     private final MagTaskAutomationProperties taskAutomationProperties;
     private final MagAlertService alertService;
-    private final MagAgentImprovementLogMapper improvementLogMapper;
     private final MagCoordinationChatWriter coordinationChatWriter;
 
     public List<Map<String, Object>> listByProject(Long projectId, Long userId) {
@@ -320,8 +318,8 @@ public class MagTaskService {
 
     /**
      * 在关联任务的 Agent 编排 Activity 已成功结束且事务已提交后调用：
-     * 若任务仍为「进行中」、执行 Agent 与编排一致，且存在产出物（本次编排时间窗内在 {@code mag_agent_improvement_log} 至少一条），
-     * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。仅凭模型长文本回复不算产出物。
+     * 若任务仍为「进行中」、执行 Agent 与编排一致，且编排最终回复非空（trim 后），
+     * 则自动申报完成（与 HTTP「申报完成」写入同一状态机与流程事件）。
      */
     public void tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration(
             long taskId,
@@ -351,12 +349,10 @@ public class MagTaskService {
                     orchestrationAgentId);
             return;
         }
-        LocalDateTime since = outputWindowStart != null ? outputWindowStart : LocalDateTime.MIN;
-        if (!hasImprovementLogDeliverableAfterOrchestration(task.getProjectId(), orchestrationAgentId, since)) {
+        if (!hasNonEmptyOrchestrationReply(orchestrationResultSummary)) {
             log.debug(
-                    "skip auto submit-complete: taskId={} no improvement log in orchestration window (orchReplyChars={})",
-                    taskId,
-                    orchestrationResultSummary != null ? orchestrationResultSummary.length() : 0);
+                    "skip auto submit-complete: taskId={} empty orchestration reply",
+                    taskId);
             return;
         }
         try {
@@ -373,10 +369,8 @@ public class MagTaskService {
         }
     }
 
-    /** 自动申报完成所认的产出物：仅统计改进日志，不采纳编排最终文本长度。 */
-    private boolean hasImprovementLogDeliverableAfterOrchestration(
-            long projectId, long agentId, LocalDateTime sinceInclusive) {
-        return improvementLogMapper.countByProjectAgentCreatedAtSince(projectId, agentId, sinceInclusive) > 0;
+    private static boolean hasNonEmptyOrchestrationReply(String orchestrationResultSummary) {
+        return orchestrationResultSummary != null && !orchestrationResultSummary.trim().isEmpty();
     }
 
     @Transactional

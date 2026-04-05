@@ -10,7 +10,6 @@ import com.aiburst.mag.MagResultCode;
 import com.aiburst.mag.entity.MagAgent;
 import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.service.MagCoordinationChatWriter;
-import com.aiburst.mag.service.MagImprovementLogService;
 import com.aiburst.mag.service.MagModuleService;
 import com.aiburst.mag.service.MagRequirementService;
 import com.aiburst.mag.service.MagTaskService;
@@ -74,7 +73,6 @@ public class MagAgentScopeRunService {
     private final MagModuleService magModuleService;
     private final MagAgentMapper magAgentMapper;
     private final MagRequirementService magRequirementService;
-    private final MagImprovementLogService magImprovementLogService;
     private final MagMcpToolRegistry magMcpToolRegistry;
     private final MagAgentScopeSerialRunner serialRunner;
     private final MagCoordinationChatWriter coordinationChatWriter;
@@ -397,28 +395,6 @@ public class MagAgentScopeRunService {
         if ("PRODUCT".equals(role)) {
             toolkit.registerTool(
                     new MagProductRequirementTools(projectId, triggerUserId, magRequirementService));
-        }
-        if ("FRONTEND".equals(role)) {
-            toolkit.registerTool(
-                    new MagDevLayerTools(
-                            projectId,
-                            triggerUserId,
-                            agentId,
-                            "FRONTEND_DEV_PLAN",
-                            magImprovementLogService));
-        }
-        if ("BACKEND".equals(role)) {
-            toolkit.registerTool(
-                    new MagDevLayerTools(
-                            projectId,
-                            triggerUserId,
-                            agentId,
-                            "BACKEND_DEV_PLAN",
-                            magImprovementLogService));
-        }
-        if ("TEST".equals(role)) {
-            toolkit.registerTool(
-                    new MagTestUnitPlanTools(projectId, triggerUserId, agentId, magImprovementLogService));
         }
     }
 

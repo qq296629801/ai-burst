@@ -173,44 +173,6 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
-      <el-tab-pane label="产出物" name="workOutputs">
-        <div class="toolbar">
-          <el-button size="small" @click="loadWorkOutputs">刷新</el-button>
-          <span class="form-hint" style="margin-left: 8px">
-            聚合 Agent 工具落库的改进日志（开发实现说明、测试计划等）、产品提交的需求池候选、需求文档各版本摘要。
-          </span>
-        </div>
-        <el-table :data="workOutputs" border stripe size="small" style="margin-top: 8px" max-height="520">
-          <el-table-column prop="occurredAt" label="时间" width="170" />
-          <el-table-column label="类型" width="140">
-            <template #default="{ row }">
-              <el-tag size="small" :type="workOutputKindTagType(row.kind)">{{ workOutputKindLabel(row.kind) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="来源" min-width="160" show-overflow-tooltip>
-            <template #default="{ row }">
-              <template v-if="row.kind === 'IMPROVEMENT'">
-                {{ row.agentName || '—' }}（{{ row.agentRoleType || '—' }}）#{{ row.agentId }}
-              </template>
-              <template v-else-if="row.kind === 'REQUIREMENT_POOL'">需求池 · 产品候选</template>
-              <template v-else-if="row.kind === 'REQUIREMENT_DOC'">
-                需求文档 v{{ row.revisionVersion }} · 用户 #{{ row.authorUserId }}
-              </template>
-              <template v-else>—</template>
-            </template>
-          </el-table-column>
-          <el-table-column prop="changeType" label="子类型" width="160" show-overflow-tooltip />
-          <el-table-column prop="summary" label="摘要" min-width="220" show-overflow-tooltip />
-          <el-table-column label="池状态" width="100">
-            <template #default="{ row }">{{ row.state || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="88" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openWorkOutputDetail(row)">全文</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
       <el-tab-pane label="需求文档" name="req">
         <div class="toolbar wrap">
           <el-button v-permission="'mag:req:edit'" type="primary" size="small" @click="saveReq">保存新版本</el-button>
@@ -232,83 +194,6 @@
           style="margin-top: 12px"
           placeholder="版本 diff 结果"
         />
-      </el-tab-pane>
-      <el-tab-pane label="需求池" name="pool">
-        <el-table :data="pool" border stripe size="small">
-          <el-table-column prop="id" label="ID" width="72" />
-          <el-table-column prop="state" label="状态" width="180">
-            <template #default="{ row }">{{ poolStateLabel(row.state) }}</template>
-          </el-table-column>
-          <el-table-column label="摘要" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ poolRowSummary(row) }}</template>
-          </el-table-column>
-          <el-table-column label="载荷" width="120" align="center">
-            <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openPoolPayloadMarkdown(row)">Markdown 查看</el-button>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="320">
-            <template #default="{ row }">
-              <template v-if="row.state === 'PENDING_USER'">
-                <el-button
-                  v-permission="'mag:pool:decide'"
-                  link
-                  type="primary"
-                  size="small"
-                  @click="decide(row, 'APPROVE_AS_IS')"
-                >
-                  原样通过
-                </el-button>
-                <el-button
-                  v-permission="'mag:pool:decide'"
-                  link
-                  type="primary"
-                  size="small"
-                  @click="decide(row, 'APPROVE_WITH_CHANGE')"
-                >
-                  变更通过
-                </el-button>
-                <el-button
-                  v-permission="'mag:pool:decide'"
-                  link
-                  type="danger"
-                  size="small"
-                  @click="decide(row, 'REJECT')"
-                >
-                  拒绝
-                </el-button>
-                <el-button
-                  v-permission="'mag:pool:decide'"
-                  link
-                  size="small"
-                  @click="decide(row, 'DEFER')"
-                >
-                  延期
-                </el-button>
-              </template>
-              <el-button
-                v-permission="'mag:req:edit'"
-                v-if="row.state !== 'CLOSED_BY_PRODUCT'"
-                link
-                type="warning"
-                size="small"
-                @click="openProductClose(row)"
-              >
-                产品结案
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane label="归档" name="releases">
-        <el-button v-permission="'mag:release:archive'" type="primary" size="small" @click="openRelease">
-          新建归档
-        </el-button>
-        <el-table :data="releases" border stripe size="small" style="margin-top: 8px">
-          <el-table-column prop="versionLabel" label="版本" />
-          <el-table-column prop="qualityFlag" label="优质" width="80" />
-          <el-table-column prop="createdAt" label="时间" width="180" />
-        </el-table>
       </el-tab-pane>
       <el-tab-pane label="沟通" name="threads">
         <el-button v-permission="'mag:task:operate'" type="primary" size="small" @click="addThread">新线程</el-button>
@@ -398,52 +283,6 @@
               </el-button>
             </template>
           </el-table-column>
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane v-if="user.hasPerm('mag:audit:fetch:view')" label="外网审计" name="fetchAudit">
-        <el-button size="small" @click="loadFetchAudit">刷新</el-button>
-        <el-table :data="fetchAudits" border stripe size="small" style="margin-top: 8px">
-          <el-table-column prop="id" label="ID" width="72" />
-          <el-table-column prop="normalizedUrl" label="URL" show-overflow-tooltip />
-          <el-table-column prop="httpStatus" label="HTTP" width="80" />
-          <el-table-column prop="createdAt" label="时间" width="180" />
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane label="PM协助" name="pmAssist">
-        <div class="toolbar">
-          <el-button v-permission="'mag:agent:manage'" type="primary" size="small" @click="openPmAssist">
-            登记协助
-          </el-button>
-          <el-button size="small" @click="loadPmAssist">刷新</el-button>
-        </div>
-        <el-table :data="pmAssists" border stripe size="small" style="margin-top: 8px">
-          <el-table-column prop="id" label="ID" width="72" />
-          <el-table-column prop="problemType" label="类型" width="120" />
-          <el-table-column prop="rootCauseSummary" label="根因摘要" show-overflow-tooltip />
-          <el-table-column prop="resolved" label="已解决" width="80" />
-          <el-table-column prop="createdAt" label="时间" width="180" />
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane label="改进" name="improvements">
-        <div class="toolbar wrap">
-          <el-select v-model="improveAgentId" placeholder="选择 Agent" filterable style="width: 220px" clearable>
-            <el-option v-for="a in agents" :key="a.id" :label="`${a.name} (#${a.id})`" :value="a.id" />
-          </el-select>
-          <el-button size="small" :disabled="!improveAgentId" @click="loadImprovements">加载日志</el-button>
-          <el-button
-            v-permission="'mag:agent:manage'"
-            type="primary"
-            size="small"
-            :disabled="!improveAgentId"
-            @click="openImprovement"
-          >
-            追加记录
-          </el-button>
-        </div>
-        <el-table :data="improvements" border stripe size="small" style="margin-top: 8px">
-          <el-table-column prop="changeType" label="类型" width="120" />
-          <el-table-column prop="summary" label="摘要" show-overflow-tooltip />
-          <el-table-column prop="createdAt" label="时间" width="180" />
         </el-table>
       </el-tab-pane>
       <el-tab-pane v-if="user.hasPerm('mag:sched:manage')" label="定时任务" name="sched">
@@ -545,20 +384,6 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="relDlg" title="归档" width="480px">
-    <el-form label-width="100px">
-      <el-form-item label="版本标签" required><el-input v-model="relForm.versionLabel" /></el-form-item>
-      <el-form-item label="快照 JSON"><el-input v-model="relForm.snapshotJson" type="textarea" :rows="4" /></el-form-item>
-      <el-form-item label="优质候选">
-        <el-switch v-model="relForm.qualityFlag" :active-value="1" :inactive-value="0" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="relDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveRelease">保存</el-button>
-    </template>
-  </el-dialog>
-
   <el-dialog v-model="moduleDlg" :title="moduleEditId ? '编辑模块' : '新建模块'" width="440px">
     <el-form label-width="88px">
       <el-form-item label="名称" required><el-input v-model="moduleForm.name" /></el-form-item>
@@ -574,13 +399,8 @@
 
   <el-dialog v-model="blueprintDlg" title="导入蓝图" width="440px">
     <el-form label-width="100px">
-      <el-form-item label="来源类型" required>
-        <el-select v-model="blueprintForm.sourceType" style="width: 100%">
-          <el-option label="归档 ARCHIVE" value="ARCHIVE" />
-          <el-option label="知识库 KB" value="KB" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="来源 ID" required><el-input v-model.number="blueprintForm.sourceId" /></el-form-item>
+      <el-form-item label="来源"><span>知识库 KB</span></el-form-item>
+      <el-form-item label="KB 条目 ID" required><el-input v-model.number="blueprintForm.sourceId" /></el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="blueprintDlg = false">取消</el-button>
@@ -601,40 +421,8 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="workOutputDetailDlg" title="产出物全文" width="800px" destroy-on-close>
-    <div v-if="workOutputDetail" class="work-output-detail-head">
-      <el-tag size="small" :type="workOutputKindTagType(workOutputDetail.kind)">
-        {{ workOutputKindLabel(workOutputDetail.kind) }}
-      </el-tag>
-      <span class="work-output-detail-meta">{{ workOutputDetail.summary }}</span>
-    </div>
-    <div
-      v-if="workOutputDetail && workOutputDetailUsesMarkdown"
-      class="mag-md-body work-output-md"
-      v-html="workOutputDetailRenderedHtml"
-    />
-    <pre v-else-if="workOutputDetail" class="work-output-detail-body">{{ workOutputDetailBody }}</pre>
-  </el-dialog>
-
   <el-dialog v-model="magResultMdPreviewDlg" :title="magResultMdPreviewTitle" width="720px" destroy-on-close>
     <div class="mag-md-body mag-result-md-dialog-body" v-html="magResultMdPreviewRenderedHtml" />
-  </el-dialog>
-
-  <el-dialog
-    v-model="poolPayloadDlg"
-    :title="poolPayloadDlgTitle"
-    width="880px"
-    destroy-on-close
-    class="pool-payload-md-dialog"
-  >
-    <el-tabs v-if="poolPayloadViewRow" v-model="poolPayloadTab">
-      <el-tab-pane label="Markdown 预览" name="preview">
-        <div class="mag-md-body pool-payload-md" v-html="poolPayloadRenderedHtml" />
-      </el-tab-pane>
-      <el-tab-pane label="原始 JSON" name="raw">
-        <pre class="pool-payload-raw">{{ poolPayloadRawText }}</pre>
-      </el-tab-pane>
-    </el-tabs>
   </el-dialog>
 
   <el-dialog v-model="reqNextDlg" title="要活 request-next" width="440px">
@@ -665,51 +453,6 @@
     <template #footer>
       <el-button @click="analyzeDlg = false">取消</el-button>
       <el-button type="primary" @click="saveAnalyze">提交分析</el-button>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="productCloseDlg" title="产品结案" width="480px">
-    <el-input v-model="productCloseForm.conclusionSummary" type="textarea" :rows="4" placeholder="结论摘要" />
-    <el-input
-      v-model="productCloseForm.payloadExtensionJson"
-      type="textarea"
-      :rows="3"
-      style="margin-top: 8px"
-      placeholder="可选扩展 JSON"
-    />
-    <template #footer>
-      <el-button @click="productCloseDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveProductClose">确认</el-button>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="pmAssistDlg" title="PM 协助记录" width="520px">
-    <el-form label-width="120px">
-      <el-form-item label="问题类型"><el-input v-model="pmAssistForm.problemType" /></el-form-item>
-      <el-form-item label="根因摘要" required><el-input v-model="pmAssistForm.rootCauseSummary" type="textarea" :rows="3" /></el-form-item>
-      <el-form-item label="处理动作"><el-input v-model="pmAssistForm.actionTaken" type="textarea" :rows="2" /></el-form-item>
-      <el-form-item label="协助 Agent IDs JSON">
-        <el-input v-model="pmAssistForm.assistedAgentIdsJson" placeholder='如 [1,2]' />
-      </el-form-item>
-      <el-form-item label="已解决">
-        <el-switch v-model="pmAssistForm.resolved" :active-value="1" :inactive-value="0" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="pmAssistDlg = false">取消</el-button>
-      <el-button type="primary" @click="savePmAssist">保存</el-button>
-    </template>
-  </el-dialog>
-
-  <el-dialog v-model="improveDlg" title="改进记录" width="480px">
-    <el-form label-width="88px">
-      <el-form-item label="类型" required><el-input v-model="improveForm.changeType" /></el-form-item>
-      <el-form-item label="摘要" required><el-input v-model="improveForm.summary" type="textarea" :rows="3" /></el-form-item>
-      <el-form-item label="详情 JSON"><el-input v-model="improveForm.detailJson" type="textarea" :rows="2" /></el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="improveDlg = false">取消</el-button>
-      <el-button type="primary" @click="saveImprovement">保存</el-button>
     </template>
   </el-dialog>
 
@@ -907,17 +650,12 @@ import {
   magCreateAgent,
   magUpdateAgent,
   magListTasks,
-  magListWorkOutputs,
   magDispatchTask,
   magPmReassignTask,
   magStartTask,
   magSubmitComplete,
   magGetRequirementDoc,
   magSaveRequirementDoc,
-  magListRequirementPool,
-  magDecidePoolItem,
-  magListReleases,
-  magCreateRelease,
   magListThreads,
   magCreateThread,
   magListModules,
@@ -927,10 +665,6 @@ import {
   magImportBlueprint,
   magTaskBlock,
   magTaskRequestNext,
-  magListPmAssist,
-  magCreatePmAssist,
-  magListImprovements,
-  magAppendImprovement,
   magListAlerts,
   magAckAlert,
   magListScheduledJobs,
@@ -938,8 +672,6 @@ import {
   magListReqRevisions,
   magReqDiff,
   magReqAnalyzeChange,
-  magProductClosePoolItem,
-  magListFetchAudit,
   magListMessages,
   magPostMessage,
   magRunThread,
@@ -960,25 +692,16 @@ const project = ref(null)
 const members = ref([])
 const agents = ref([])
 const tasks = ref([])
-const pool = ref([])
-const releases = ref([])
 const threads = ref([])
 const reqContent = ref('')
 const modules = ref([])
 const alerts = ref([])
-const fetchAudits = ref([])
-const pmAssists = ref([])
-const improvements = ref([])
 const schedJobs = ref([])
-const improveAgentId = ref(null)
 const revisions = ref([])
 const diffV1 = ref(1)
 const diffV2 = ref(2)
 const diffText = ref('')
 const orchestrationRuns = ref([])
-const workOutputs = ref([])
-const workOutputDetailDlg = ref(false)
-const workOutputDetail = ref(null)
 const magResultMdPreviewDlg = ref(false)
 const magResultMdPreviewTitle = ref('Markdown 预览')
 const magResultMdPreviewMarkdown = ref('')
@@ -1002,19 +725,6 @@ const agentRoleOptions = [
   { value: 'FRONTEND', label: '前端（FRONTEND）' },
   { value: 'TEST', label: '测试（TEST）' },
 ]
-
-const POOL_STATE_LABELS = {
-  PENDING_USER: '待用户拍板（历史）',
-  USER_CONFIRMED_OK: '已并入需求文档',
-  USER_CONFIRMED_CHANGE: '用户确认（有变更）',
-  USER_REJECTED: '已拒绝',
-  CLOSED: '已关闭（延期等）',
-  CLOSED_BY_PRODUCT: '产品结案',
-}
-
-function poolStateLabel(s) {
-  return POOL_STATE_LABELS[s] || s || '—'
-}
 
 const agentDlg = ref(false)
 const agentEditingId = ref(null)
@@ -1043,42 +753,14 @@ const FLOW_EVENT_LABELS = {
   TASK_REQUEST_NEXT: '要活（申领下一项）',
 }
 
-const relDlg = ref(false)
-const relForm = ref({ versionLabel: '', snapshotJson: '{}', qualityFlag: 0 })
 const moduleDlg = ref(false)
 const moduleEditId = ref(null)
 const moduleForm = ref({ name: '', parentId: 0, tag: '', sortOrder: 0 })
 const blueprintDlg = ref(false)
-const blueprintForm = ref({ sourceType: 'ARCHIVE', sourceId: null })
+const blueprintForm = ref({ sourceType: 'KB', sourceId: null })
 const blockDlg = ref(false)
 const blockTask = ref(null)
 const blockForm = ref({ reason: '', blockedByAgentId: null })
-const workOutputDetailBody = computed(() => {
-  const b = workOutputDetail.value?.body
-  if (b == null) return ''
-  return typeof b === 'string' ? b : JSON.stringify(b, null, 2)
-})
-
-const workOutputDetailUsesMarkdown = computed(() => {
-  const k = workOutputDetail.value?.kind
-  return k === 'REQUIREMENT_POOL' || k === 'REQUIREMENT_DOC'
-})
-
-const workOutputDetailRenderedHtml = computed(() => {
-  const row = workOutputDetail.value
-  if (!row) return ''
-  if (row.kind === 'REQUIREMENT_DOC') {
-    const c = row.body
-    const s = typeof c === 'string' ? c : ''
-    return renderMarkdownToSafeHtml(s.trim() ? s : '_（空正文）_')
-  }
-  if (row.kind === 'REQUIREMENT_POOL') {
-    const body = row.body
-    const payloadJson = typeof body === 'string' ? body : JSON.stringify(body ?? {})
-    return renderMarkdownToSafeHtml(buildPoolPayloadMarkdownFromPayloadJson(payloadJson))
-  }
-  return ''
-})
 
 const magResultMdPreviewRenderedHtml = computed(() => {
   const s = magResultMdPreviewMarkdown.value
@@ -1094,112 +776,12 @@ function openResultMarkdownPreview(title, markdown) {
   magResultMdPreviewDlg.value = true
 }
 
-const poolPayloadDlg = ref(false)
-const poolPayloadViewRow = ref(null)
-const poolPayloadTab = ref('preview')
-
-const poolPayloadDlgTitle = computed(() => {
-  const r = poolPayloadViewRow.value
-  return r ? `需求池 #${r.id} · Markdown` : '需求池载荷'
-})
-
-const poolPayloadRenderedHtml = computed(() => {
-  const row = poolPayloadViewRow.value
-  if (!row) return ''
-  return renderMarkdownToSafeHtml(buildPoolPayloadMarkdownFromPayloadJson(row.payloadJson))
-})
-
-const poolPayloadRawText = computed(() => {
-  const row = poolPayloadViewRow.value
-  if (!row) return ''
-  const raw = row.payloadJson
-  if (raw == null || raw === '') return ''
-  if (typeof raw === 'string') {
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2)
-    } catch {
-      return raw
-    }
-  }
-  try {
-    return JSON.stringify(raw, null, 2)
-  } catch {
-    return String(raw)
-  }
-})
-
-function parsePoolPayloadObject(payloadJson) {
-  if (payloadJson == null || payloadJson === '') return null
-  try {
-    return typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson
-  } catch {
-    return null
-  }
-}
-
-/** 需求池表格「摘要」列 */
-function poolRowSummary(row) {
-  const p = parsePoolPayloadObject(row?.payloadJson)
-  if (p && typeof p === 'object' && typeof p.summary === 'string' && p.summary.trim()) {
-    return p.summary.trim()
-  }
-  return '—'
-}
-
-function buildPoolPayloadMarkdownFromPayloadJson(payloadJson) {
-  const p = parsePoolPayloadObject(payloadJson)
-  if (!p || typeof p !== 'object') {
-    const fallback = payloadJson != null ? String(payloadJson) : ''
-    return '## 载荷\n\n```text\n' + fallback + '\n```\n'
-  }
-  const summary = p.summary != null ? String(p.summary) : ''
-  const md = p.proposedMarkdown != null ? String(p.proposedMarkdown) : ''
-  const source = p.source != null ? String(p.source) : ''
-  const lines = []
-  lines.push('## 摘要\n\n', summary.trim() || '_（无）_', '\n')
-  if (source.trim()) {
-    lines.push('\n**来源**：`', source, '`\n')
-  }
-  lines.push('\n---\n\n## 建议正文（Markdown）\n\n', md.trim() ? md : '_（无 proposedMarkdown）_', '\n')
-  const extra = { ...p }
-  delete extra.summary
-  delete extra.proposedMarkdown
-  delete extra.source
-  if (Object.keys(extra).length) {
-    lines.push(
-      '\n\n---\n\n## 其它字段\n\n```json\n',
-      JSON.stringify(extra, null, 2),
-      '\n```\n',
-    )
-  }
-  return lines.join('')
-}
-
-function openPoolPayloadMarkdown(row) {
-  poolPayloadViewRow.value = row
-  poolPayloadTab.value = 'preview'
-  poolPayloadDlg.value = true
-}
-
 const reqNextDlg = ref(false)
 const reqNextTask = ref(null)
 const reqNextForm = ref({ agentId: null })
 const revDlg = ref(false)
 const analyzeDlg = ref(false)
 const analyzeForm = ref({ changeSummary: '' })
-const productCloseDlg = ref(false)
-const productCloseRow = ref(null)
-const productCloseForm = ref({ conclusionSummary: '', payloadExtensionJson: '' })
-const pmAssistDlg = ref(false)
-const pmAssistForm = ref({
-  problemType: '',
-  rootCauseSummary: '',
-  actionTaken: '',
-  assistedAgentIdsJson: '',
-  resolved: 0,
-})
-const improveDlg = ref(false)
-const improveForm = ref({ changeType: '', summary: '', detailJson: '' })
 const schedDlg = ref(false)
 const schedForm = ref({ id: null, jobKey: '', cronExpr: '0 0 * * * ?', enabled: 1, projectId: null })
 const threadDlg = ref(false)
@@ -1228,16 +810,6 @@ async function loadTasks() {
   tasks.value = res.data
 }
 
-async function loadPool() {
-  const res = await magListRequirementPool(projectId.value)
-  pool.value = res.data
-}
-
-async function loadReleases() {
-  const res = await magListReleases(projectId.value)
-  releases.value = res.data
-}
-
 async function loadThreads() {
   const res = await magListThreads(projectId.value)
   threads.value = res.data
@@ -1248,41 +820,6 @@ async function loadOrchestrationRuns() {
   if (!pid) return
   const res = await magListOrchestrationRuns(pid, { limit: 50 })
   orchestrationRuns.value = res.data || []
-}
-
-async function loadWorkOutputs() {
-  const pid = projectId.value
-  if (!pid) return
-  try {
-    const res = await magListWorkOutputs(pid, {
-      improvementLimit: 400,
-      poolLimit: 200,
-      revisionLimit: 40,
-    })
-    workOutputs.value = res.data?.items || []
-  } catch {
-    workOutputs.value = []
-    ElMessage.warning('加载产出物失败')
-  }
-}
-
-function workOutputKindLabel(kind) {
-  if (kind === 'IMPROVEMENT') return '改进日志'
-  if (kind === 'REQUIREMENT_POOL') return '需求池'
-  if (kind === 'REQUIREMENT_DOC') return '需求文档'
-  return kind || '—'
-}
-
-function workOutputKindTagType(kind) {
-  if (kind === 'IMPROVEMENT') return 'primary'
-  if (kind === 'REQUIREMENT_POOL') return 'warning'
-  if (kind === 'REQUIREMENT_DOC') return 'success'
-  return 'info'
-}
-
-function openWorkOutputDetail(row) {
-  workOutputDetail.value = row
-  workOutputDetailDlg.value = true
 }
 
 function notifyFromAlertPayload(alert) {
@@ -1389,22 +926,6 @@ async function loadAlerts() {
   alerts.value = res.data
 }
 
-async function loadFetchAudit() {
-  const res = await magListFetchAudit(projectId.value)
-  fetchAudits.value = res.data
-}
-
-async function loadPmAssist() {
-  const res = await magListPmAssist(projectId.value)
-  pmAssists.value = res.data
-}
-
-async function loadImprovements() {
-  if (!improveAgentId.value) return
-  const res = await magListImprovements(projectId.value, improveAgentId.value)
-  improvements.value = res.data
-}
-
 async function loadSched() {
   const res = await magListScheduledJobs({ projectId: projectId.value })
   schedJobs.value = res.data
@@ -1420,16 +941,11 @@ watch(tab, (t) => {
     loadModules()
     loadTasks()
   }
-  if (t === 'pool') loadPool()
-  if (t === 'releases') loadReleases()
   if (t === 'threads') loadThreads()
   if (t === 'orchRuns') loadOrchestrationRuns()
-  if (t === 'workOutputs') loadWorkOutputs()
   if (t === 'req') loadReq()
   if (t === 'modules') loadModules()
   if (t === 'alerts') loadAlerts()
-  if (t === 'fetchAudit') loadFetchAudit()
-  if (t === 'pmAssist') loadPmAssist()
   if (t === 'sched') loadSched()
 })
 
@@ -1756,25 +1272,6 @@ async function saveReq() {
   ElMessage.success('已保存')
 }
 
-async function decide(row, decision) {
-  await magDecidePoolItem(row.id, { decision })
-  ElMessage.success('已处理')
-  loadPool()
-  loadReq()
-}
-
-function openRelease() {
-  relForm.value = { versionLabel: 'v1.0.0', snapshotJson: '{}', qualityFlag: 0 }
-  relDlg.value = true
-}
-
-async function saveRelease() {
-  await magCreateRelease(projectId.value, relForm.value)
-  ElMessage.success('已归档')
-  relDlg.value = false
-  loadReleases()
-}
-
 async function addThread() {
   await magCreateThread(projectId.value, { title: '讨论' })
   ElMessage.success('已创建线程')
@@ -1824,16 +1321,19 @@ async function removeModule(row) {
 }
 
 function openBlueprint() {
-  blueprintForm.value = { sourceType: 'ARCHIVE', sourceId: null }
+  blueprintForm.value = { sourceType: 'KB', sourceId: null }
   blueprintDlg.value = true
 }
 
 async function saveBlueprint() {
   if (!blueprintForm.value.sourceId) {
-    ElMessage.warning('请填写来源 ID')
+    ElMessage.warning('请填写 KB 条目 ID')
     return
   }
-  const res = await magImportBlueprint(projectId.value, blueprintForm.value)
+  const res = await magImportBlueprint(projectId.value, {
+    sourceType: 'KB',
+    sourceId: blueprintForm.value.sourceId,
+  })
   ElMessage.success(`已导入 ${res.data?.length ?? 0} 条模块`)
   blueprintDlg.value = false
   loadModules()
@@ -1901,59 +1401,10 @@ async function saveAnalyze() {
   analyzeDlg.value = false
 }
 
-function openProductClose(row) {
-  productCloseRow.value = row
-  productCloseForm.value = { conclusionSummary: '', payloadExtensionJson: '' }
-  productCloseDlg.value = true
-}
-
-async function saveProductClose() {
-  if (!productCloseForm.value.conclusionSummary.trim()) return
-  await magProductClosePoolItem(productCloseRow.value.id, {
-    conclusionSummary: productCloseForm.value.conclusionSummary,
-    payloadExtensionJson: productCloseForm.value.payloadExtensionJson || undefined,
-  })
-  ElMessage.success('已结案')
-  productCloseDlg.value = false
-  loadPool()
-}
-
 async function ackAlert(row) {
   await magAckAlert(row.id)
   ElMessage.success('已确认')
   loadAlerts()
-}
-
-function openPmAssist() {
-  pmAssistForm.value = {
-    problemType: '',
-    rootCauseSummary: '',
-    actionTaken: '',
-    assistedAgentIdsJson: '',
-    resolved: 0,
-  }
-  pmAssistDlg.value = true
-}
-
-async function savePmAssist() {
-  if (!pmAssistForm.value.rootCauseSummary.trim()) return
-  await magCreatePmAssist(projectId.value, pmAssistForm.value)
-  ElMessage.success('已登记')
-  pmAssistDlg.value = false
-  loadPmAssist()
-}
-
-function openImprovement() {
-  improveForm.value = { changeType: '', summary: '', detailJson: '' }
-  improveDlg.value = true
-}
-
-async function saveImprovement() {
-  if (!improveForm.value.changeType.trim() || !improveForm.value.summary.trim()) return
-  await magAppendImprovement(projectId.value, improveAgentId.value, improveForm.value)
-  ElMessage.success('已追加')
-  improveDlg.value = false
-  loadImprovements()
 }
 
 function openSched() {
@@ -2372,29 +1823,6 @@ async function runAgentRow(row) {
 .thread-chat-composer .el-textarea {
   flex: 1;
 }
-.work-output-detail-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.work-output-detail-meta {
-  font-size: 13px;
-  color: var(--el-text-color-regular);
-}
-.work-output-detail-body {
-  margin: 0;
-  padding: 12px;
-  max-height: 480px;
-  overflow: auto;
-  font-size: 12px;
-  line-height: 1.45;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
 .form-hint {
   margin-top: 6px;
   font-size: 12px;
@@ -2598,28 +2026,5 @@ async function runAgentRow(row) {
   border: none;
   border-top: 1px solid var(--el-border-color-lighter);
   margin: 1em 0;
-}
-.pool-payload-md {
-  max-height: min(62vh, 560px);
-  overflow-y: auto;
-  padding: 4px 2px 12px;
-}
-.pool-payload-raw {
-  margin: 0;
-  max-height: min(62vh, 560px);
-  overflow: auto;
-  padding: 12px;
-  font-size: 12px;
-  line-height: 1.45;
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.work-output-md {
-  max-height: min(65vh, 520px);
-  overflow-y: auto;
-  margin-top: 10px;
-  padding: 4px 2px;
 }
 </style>

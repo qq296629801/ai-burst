@@ -16,10 +16,9 @@ public class MagTaskAutomationProperties {
     private boolean autoStartOnDispatch = true;
 
     /**
-     * 关联任务的 Agent 编排（Temporal Activity）成功结束后，若任务仍为进行中且存在产出物（本次编排时间窗内
-     * {@code mag_agent_improvement_log} 至少一条，见
-     * {@link com.aiburst.mag.service.MagTaskService#tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration}），
-     * 是否自动申报完成（进入已完成）。不替代人工「申报完成」接口。
+     * 关联任务的 Agent 编排（Temporal Activity）成功结束后，若任务仍为进行中且编排最终回复非空，是否自动申报完成
+     * （进入已完成），见 {@link com.aiburst.mag.service.MagTaskService#tryAutoSubmitCompleteAfterSuccessfulAgentOrchestration}。
+     * 不替代人工「申报完成」接口。
      */
     private boolean autoSubmitCompleteOnOrchestrationSuccess = true;
 

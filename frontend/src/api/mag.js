@@ -48,11 +48,6 @@ export function magListTasks(projectId) {
   return http.get(`/mag/projects/${projectId}/tasks`)
 }
 
-/** 聚合：改进日志 + 需求池 + 需求文档版本（Agent 产出物） */
-export function magListWorkOutputs(projectId, params) {
-  return http.get(`/mag/projects/${projectId}/work-outputs`, { params })
-}
-
 export function magCreateTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks`, data)
 }
@@ -108,18 +103,6 @@ export function magSaveRequirementDoc(projectId, data) {
   return http.put(`/mag/projects/${projectId}/requirement-doc`, data)
 }
 
-export function magListRequirementPool(projectId) {
-  return http.get(`/mag/projects/${projectId}/requirement-pool`)
-}
-
-export function magCreatePoolItem(projectId, data) {
-  return http.post(`/mag/projects/${projectId}/requirement-pool`, data)
-}
-
-export function magDecidePoolItem(poolItemId, data) {
-  return http.post(`/mag/requirement-pool/${poolItemId}/decide`, data)
-}
-
 export function magKbPage(params) {
   return http.get('/mag/kb/entries', { params })
 }
@@ -128,24 +111,12 @@ export function magKbCreate(data) {
   return http.post('/mag/kb/entries', data)
 }
 
-export function magListReleases(projectId) {
-  return http.get(`/mag/projects/${projectId}/releases`)
-}
-
-export function magCreateRelease(projectId, data) {
-  return http.post(`/mag/projects/${projectId}/releases`, data)
-}
-
 export function magDashboardSnapshot(projectId) {
   return http.get('/mag/dashboard/snapshot', { params: { projectId } })
 }
 
 export function magListOrchestrationRuns(projectId, params) {
   return http.get(`/mag/projects/${projectId}/orchestration-runs`, { params })
-}
-
-export function magTodosPage(params) {
-  return http.get('/mag/todos', { params })
 }
 
 export function magListModules(projectId) {
@@ -174,22 +145,6 @@ export function magTaskBlock(taskId, data) {
 
 export function magTaskRequestNext(taskId, data) {
   return http.post(`/mag/tasks/${taskId}/request-next`, data)
-}
-
-export function magListPmAssist(projectId) {
-  return http.get(`/mag/projects/${projectId}/pm-assist`)
-}
-
-export function magCreatePmAssist(projectId, data) {
-  return http.post(`/mag/projects/${projectId}/pm-assist`, data)
-}
-
-export function magListImprovements(projectId, agentId) {
-  return http.get(`/mag/projects/${projectId}/agents/${agentId}/improvements`)
-}
-
-export function magAppendImprovement(projectId, agentId, data) {
-  return http.post(`/mag/projects/${projectId}/agents/${agentId}/improvements`, data)
 }
 
 export function magListAlerts(projectId) {
@@ -222,10 +177,6 @@ export function magReqAnalyzeChange(projectId, data) {
   return http.post(`/mag/projects/${projectId}/requirement-change/analyze`, data)
 }
 
-export function magProductClosePoolItem(poolItemId, data) {
-  return http.post(`/mag/requirement-pool/${poolItemId}/product-close`, data)
-}
-
 export function magKbGet(id) {
   return http.get(`/mag/kb/entries/${id}`)
 }
@@ -236,10 +187,6 @@ export function magKbUpdate(id, data) {
 
 export function magKbDelete(id) {
   return http.delete(`/mag/kb/entries/${id}`)
-}
-
-export function magListFetchAudit(projectId) {
-  return http.get(`/mag/projects/${projectId}/fetch-audit`)
 }
 
 export function magRunThread(threadId) {

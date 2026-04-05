@@ -1,5 +1,7 @@
 # 多 Agent 协作（MAG）— 测试用例（需求全文覆盖）
 
+> **当前版本**：需求池、发版归档、PM 协助、改进日志、待办聚合、产出物聚合等 API/用例行**已随产品下线**；表中仍出现的相关 `REQ-*` / `TC-*` 行保留作**历史追溯**，**勿按现行后端验收**。
+
 本文档依据《[多Agent协作与项目管理产品线需求](../产品/多Agent协作与项目管理产品线需求.md)》（下称**产品文档**）与《[多Agent协作技术方案](多Agent协作技术方案.md)》编制。**覆盖原则**：产品文档中每一可验收功能点均在本文件中有**至少一条**测试用例或**明确标注为「范围外 / 依赖编排或二期」**的追溯行，**不省略**§1～§9、§11 及 §2.1 表格逐行。
 
 **前缀**：`TC-MAG-`；**需求前缀**：`REQ-PRD-`（便于用例管理工具导入）。  
@@ -27,7 +29,7 @@
 | 基础路径 | `/api/mag`，响应 `ApiResult` |
 | 鉴权 | `Authorization: Bearer <token>` |
 | 项目隔离 | 非成员访问带 `projectId` 的接口须失败 |
-| 权限码 | 技术方案 §10 + V5：`mag:sched:manage`、`mag:kb:blueprint:import`、`mag:audit:fetch:view` |
+| 权限码 | 技术方案 §10 + V5：`mag:sched:manage`、`mag:kb:blueprint:import` |
 | WebSocket | `/ws/mag?token=`；`SUBSCRIBE` / `UNSUBSCRIBE` / `PING` |
 
 **测试数据**：用户 A（OWNER + 全量 mag 权限）、用户 B（VIEWER 或缺关键权限）；项目 P1、P2；五类 `role_type`：PM、PRODUCT、BACKEND、FRONTEND、TEST。
@@ -46,7 +48,7 @@
 | REQ-PRD-G04 | §1 目标④ | 全量记录行为与改进轨迹；定时任务触发 | TC-MAG-G04 | P1 | API：improvements、scheduled-jobs；E2E：调度执行 GAP |
 | REQ-PRD-G05 | §1 目标⑤ | 可编辑需求文档；变更识别受影响点；任务与 Agent 对齐 | TC-MAG-G05 | P1 | API：requirement-doc、revisions、diff、analyze；E2E：自动重排 GAP |
 | REQ-PRD-G06 | §1 目标⑥ | 运营大屏：是否干活、产出效率、异常；停摆/升级告警 | TC-MAG-G06 | P1 | API：dashboard、alerts；WS：`alert.new`；E2E： stall 检测 GAP |
-| REQ-PRD-G07 | §1 目标⑦ | 无法落地→向 PM 说明；PM 协助留痕；升级产品；KB+成熟产品检索+多方案择优；窄口径拍板 | TC-MAG-G07 | P0 | API：block、pm-assist、pool、fetch-audit；E2E：升级链 GAP |
+| REQ-PRD-G07 | §1 目标⑦ | 无法落地→向 PM 说明；PM 协助留痕；升级产品；KB+成熟产品检索+多方案择优；窄口径拍板 | TC-MAG-G07 | P0 | API：block、pm-assist、pool；E2E：升级链 GAP |
 | REQ-PRD-G08 | §1 目标⑧ | 发版归档；对比过程/协调/停滞/排障沉淀；项目隔离；引用归档经验与模块 | TC-MAG-G08 | P1 | API：releases、kb、import-blueprint；隔离用例 TC-MAG-ISO |
 | REQ-PRD-G09 | §1 目标⑨ | 组织知识库：归档优质回流 + 人工录入；产品/组织检索 | TC-MAG-G09 | P1 | API：kb entries；CFG：`quality_flag` 回流 |
 | REQ-PRD-G10 | §1 目标⑩ | 系统用户处理待拍板；待办与/或需求池可达 | TC-MAG-G10 | P0 | API：`GET /todos` + 需求池；UI：TodoList + 工作台池 |
@@ -163,7 +165,7 @@
 | REQ-PRD-5602 | 同时满足：KB 无据 + 搜不到成熟产品 → 待用户拍板 | TC-MAG-5602 | P1 | 池创建规则 E2E/GAP |
 | REQ-PRD-5603 | 多竞品须结构化对比择优+留痕；不要求拍板 | TC-MAG-5603 | P2 | payload 键 compareMatrix |
 | REQ-PRD-5604 | KB 有据或命中成熟产品→更新需求/建议派工；可已闭环池项 | TC-MAG-5604 | P2 | E2E/GAP |
-| REQ-PRD-5611 | 5.6.1-须同时满足①已执行检索+留痕 | TC-MAG-5611 | P1 | fetch-audit |
+| REQ-PRD-5611 | 5.6.1-须同时满足①已执行检索+留痕 | TC-MAG-5611 | P1 | 池 payload / 线程消息留痕（无独立外网审计 API） |
 | REQ-PRD-5612 | 5.6.1-②命中已落地产品实体 | TC-MAG-5612 | P2 | 池 payload matureProductHits |
 | REQ-PRD-5613 | 5.6.1-③与争议点可关联说明 | TC-MAG-5613 | P2 |
 | REQ-PRD-5614 | 5.6.1-④闭环记录：检索摘要+产品标识+结论 | TC-MAG-5614 | P1 |
@@ -316,7 +318,7 @@
 | TC-MAG-ACC-09 | 池项 `PENDING_USER`；decide；指派与 OWNER 规则 | §16.2 过滤；状态映射正确 |
 | TC-MAG-ACC-10 | dashboard；alerts；WS | 统计字段；订阅与推送 |
 | TC-MAG-ACC-11 | block；pm-assist | 阻塞字段；协助记录字段完整 |
-| TC-MAG-ACC-12 | 池 payload 成熟产品与对比；fetch 审计 | 字段存在；审计落库 |
+| TC-MAG-ACC-12 | 池 payload 成熟产品与对比 | 字段存在；池项落库 |
 | TC-MAG-ACC-13 | todos 与池一致性 | 无权限不可见 |
 | TC-MAG-ACC-14 | MANUAL + ARCHIVE_REFLOW KB | source 区分；检索 GAP |
 | TC-MAG-ACC-15 | release；import-blueprint；跨项目 | 源归档不变；隔离 |
@@ -330,14 +332,13 @@
 - **需求池**：`decide` 全决策枚举；`product-close`（REQ-PRD-6305）。  
 - **KB**：`ARCHIVE_REFLOW` 只读不可删改（REQ-PRD-5804）。  
 - **告警**：`ack` 后 acknowledged（REQ-PRD-5633）。  
-- **fetch-audit**：仅成员+`mag:audit:fetch:view`（REQ-PRD-5611）。
 
 ### 3.4 权限与安全
 
 | 用例 ID | 说明 |
 |---------|------|
-| TC-MAG-SEC-01～06 | VIEWER 写任务；无 pool:decide 拍板；无 kb:manage；无 sched；无 blueprint；无 audit |
-| TC-MAG-SAFE-01～03 | SSRF；审计；任务状态迁移须经公开 API |
+| TC-MAG-SEC-01～06 | VIEWER 写任务；无 pool:decide 拍板；无 kb:manage；无 sched；无 blueprint |
+| TC-MAG-SAFE-01～02 | 任务状态迁移须经公开 API |
 
 ### 3.5 WebSocket（§8）
 

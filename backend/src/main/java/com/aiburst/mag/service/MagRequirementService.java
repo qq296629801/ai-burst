@@ -3,33 +3,23 @@ package com.aiburst.mag.service;
 import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagConstants;
 import com.aiburst.mag.MagResultCode;
-import com.aiburst.mag.dto.MagPoolDecideRequest;
-import com.aiburst.mag.dto.MagPoolItemCreateRequest;
-import com.aiburst.mag.dto.MagPoolProductCloseRequest;
 import com.aiburst.mag.dto.MagRequirementChangeAnalyzeRequest;
 import com.aiburst.mag.dto.MagRequirementSaveRequest;
 import com.aiburst.mag.entity.MagMessage;
 import com.aiburst.mag.entity.MagRequirementDoc;
-import com.aiburst.mag.entity.MagRequirementPoolItem;
 import com.aiburst.mag.entity.MagRequirementRevision;
 import com.aiburst.mag.entity.MagThread;
 import com.aiburst.mag.mapper.MagMessageMapper;
 import com.aiburst.mag.mapper.MagModuleMapper;
 import com.aiburst.mag.mapper.MagRequirementDocMapper;
-import com.aiburst.mag.mapper.MagRequirementPoolItemMapper;
 import com.aiburst.mag.mapper.MagRequirementRevisionMapper;
 import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
-import com.aiburst.rbac.service.PermissionCacheService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,14 +33,11 @@ public class MagRequirementService {
 
     private final MagRequirementDocMapper docMapper;
     private final MagRequirementRevisionMapper revisionMapper;
-    private final MagRequirementPoolItemMapper poolMapper;
     private final MagAccessHelper accessHelper;
-    private final PermissionCacheService permissionCacheService;
     private final MagThreadMapper threadMapper;
     private final MagMessageMapper messageMapper;
     private final MagTaskMapper taskMapper;
     private final MagModuleMapper moduleMapper;
-    private final ObjectMapper objectMapper;
 
     /**
      * 供产品 Agent 工具读取当前需求正文（截断），会话与数据范围限定在项目内。
@@ -71,15 +58,11 @@ public class MagRequirementService {
     }
 
     /**
-     * 将「待评审」的开发需求/变更建议写入需求池，锚定当前最新修订，供人工或 PM 后续决策。
+     * 产品 Agent：将「开发侧需求说明」直接合并进需求文档新版本（不经需求池）。
      */
     @Transactional
-    public Map<String, Object> submitRequirementPoolCandidateFromAgent(
-            Long projectId,
-            Long userId,
-            String summary,
-            String proposedMarkdown,
-            String anchorJsonHint) {
+    public Map<String, Object> mergeDevRequirementProposedFromAgent(
+            Long projectId, Long userId, String summary, String proposedMarkdown, String anchorJsonHint) {
         accessHelper.requireMember(projectId, userId);
         if (!StringUtils.hasText(summary)) {
             throw new IllegalArgumentException("summary required");
@@ -88,27 +71,20 @@ public class MagRequirementService {
         if (doc == null) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
         }
-        MagRequirementRevision latest = ensureFirstRevisionIfAbsent(doc, userId);
-        MagPoolItemCreateRequest req = new MagPoolItemCreateRequest();
-        req.setRevisionId(latest.getId());
-        try {
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("summary", summary.trim());
-            payload.put(
-                    "proposedMarkdown",
-                    proposedMarkdown != null ? proposedMarkdown : "");
-            payload.put("source", "PRODUCT_AGENT");
-            req.setPayloadJson(objectMapper.writeValueAsString(payload));
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("payload json error");
+        ensureFirstRevisionIfAbsent(doc, userId);
+        Long newRevId = null;
+        if (StringUtils.hasText(proposedMarkdown)) {
+            newRevId = appendMergedRequirementRevision(projectId, proposedMarkdown, userId);
         }
-        req.setAnchorJson(StringUtils.hasText(anchorJsonHint) ? anchorJsonHint.trim() : "{}");
-        return createPoolItem(projectId, req, userId);
+        Map<String, Object> out = new HashMap<>();
+        out.put("revisionId", newRevId);
+        out.put("summary", summary.trim());
+        if (StringUtils.hasText(anchorJsonHint)) {
+            out.put("anchorJson", anchorJsonHint.trim());
+        }
+        return out;
     }
 
-    /**
-     * 需求池项须锚定某版修订。尚无修订时自动写入空正文 v1 并更新 current_version。
-     */
     private MagRequirementRevision ensureFirstRevisionIfAbsent(MagRequirementDoc doc, Long userId) {
         MagRequirementRevision latest = revisionMapper.selectLatest(doc.getId());
         if (latest != null) {
@@ -177,95 +153,6 @@ public class MagRequirementService {
         out.put("version", next);
         out.put("revisionId", rev.getId());
         return out;
-    }
-
-    public List<Map<String, Object>> listPool(Long projectId, Long userId) {
-        accessHelper.requireMember(projectId, userId);
-        boolean hasDecide = permissionCacheService.getPermCodes(userId).contains("mag:pool:decide");
-        String role = accessHelper.memberRole(projectId, userId);
-        return poolMapper.selectByProjectId(projectId).stream()
-                .filter(it -> accessHelper.canSeePoolItem(it, userId, role, hasDecide))
-                .map(this::poolRow)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public Map<String, Object> createPoolItem(Long projectId, MagPoolItemCreateRequest req, Long userId) {
-        accessHelper.requireMember(projectId, userId);
-        MagRequirementPoolItem it = new MagRequirementPoolItem();
-        it.setProjectId(projectId);
-        // 需求池不再走「待用户拍板」：创建即视为已应用，正式确认以需求文档版本为准。
-        it.setState(MagConstants.USER_CONFIRMED_OK);
-        it.setRevisionId(req.getRevisionId());
-        it.setAnchorJson(req.getAnchorJson());
-        it.setPayloadJson(req.getPayloadJson());
-        it.setAssignedDeciderUserId(req.getAssignedDeciderUserId());
-        poolMapper.insert(it);
-        String proposed = extractProposedMarkdown(it.getPayloadJson());
-        boolean needUpdate = false;
-        if (StringUtils.hasText(proposed)) {
-            Long newRevId = appendMergedRequirementRevision(projectId, proposed, userId);
-            if (newRevId != null) {
-                it.setRevisionId(newRevId);
-                needUpdate = true;
-            }
-        }
-        if (needUpdate) {
-            poolMapper.update(it);
-        }
-        return poolRow(poolMapper.selectById(it.getId()));
-    }
-
-    @Transactional
-    public void decide(Long poolItemId, MagPoolDecideRequest req, Long userId) {
-        MagRequirementPoolItem item = poolMapper.selectById(poolItemId);
-        if (item == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(item.getProjectId(), userId);
-        String role = accessHelper.memberRole(item.getProjectId(), userId);
-        boolean hasDecide = permissionCacheService.getPermCodes(userId).contains("mag:pool:decide");
-        if (!accessHelper.canSeePoolItem(item, userId, role, hasDecide)) {
-            throw new MagBusinessException(MagResultCode.MAG_POOL_DECIDE_NOT_ALLOWED);
-        }
-        if (!MagConstants.POOL_PENDING_USER.equals(item.getState())) {
-            throw new MagBusinessException(MagResultCode.MAG_POOL_STATE_INVALID);
-        }
-        String newState = mapDecision(req.getDecision());
-        item.setState(newState);
-        if (StringUtils.hasText(req.getNote())) {
-            String payload = item.getPayloadJson();
-            String suffix = "{\"decisionNote\":\"" + escapeJson(req.getNote()) + "\"}";
-            if (payload == null || payload.isBlank()) {
-                item.setPayloadJson(suffix);
-            } else {
-                item.setPayloadJson(payload + "," + suffix);
-            }
-        }
-        poolMapper.update(item);
-
-        syncRequirementDocAfterPoolDecision(item, req, userId);
-    }
-
-    @Transactional
-    public void productClosePoolItem(Long poolItemId, MagPoolProductCloseRequest req, Long userId) {
-        if (!permissionCacheService.getPermCodes(userId).contains("mag:req:edit")) {
-            throw new MagBusinessException(MagResultCode.MAG_FORBIDDEN);
-        }
-        MagRequirementPoolItem item = poolMapper.selectById(poolItemId);
-        if (item == null) {
-            throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-        }
-        accessHelper.requireMember(item.getProjectId(), userId);
-        item.setState(MagConstants.POOL_CLOSED_BY_PRODUCT);
-        String ext = req.getPayloadExtensionJson();
-        String base = "{\"productConclusion\":\"" + escapeJson(req.getConclusionSummary()) + "\"}";
-        if (StringUtils.hasText(ext)) {
-            item.setPayloadJson((item.getPayloadJson() != null ? item.getPayloadJson() + "," : "") + base + "," + ext);
-        } else {
-            item.setPayloadJson((item.getPayloadJson() != null ? item.getPayloadJson() + "," : "") + base);
-        }
-        poolMapper.update(item);
     }
 
     public List<Map<String, Object>> listRevisions(Long projectId, Long userId) {
@@ -370,59 +257,6 @@ public class MagRequirementService {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
-    private static String mapDecision(String decision) {
-        if (MagConstants.DECISION_APPROVE_AS_IS.equals(decision)) {
-            return MagConstants.USER_CONFIRMED_OK;
-        }
-        if (MagConstants.DECISION_APPROVE_WITH_CHANGE.equals(decision)) {
-            return MagConstants.USER_CONFIRMED_CHANGE;
-        }
-        if (MagConstants.DECISION_REJECT.equals(decision)) {
-            return "USER_REJECTED";
-        }
-        if (MagConstants.DECISION_DEFER.equals(decision)) {
-            return "CLOSED";
-        }
-        throw new MagBusinessException(MagResultCode.MAG_POOL_STATE_INVALID, "unknown decision");
-    }
-
-    /**
-     * 从需求池 {@code payload_json} 解析 {@code proposedMarkdown}（产品 Agent / 前端写入）。
-     */
-    private String extractProposedMarkdown(String payloadJson) {
-        if (!StringUtils.hasText(payloadJson)) {
-            return "";
-        }
-        try {
-            JsonNode root = objectMapper.readTree(payloadJson.trim());
-            if (root == null || !root.has("proposedMarkdown")) {
-                return "";
-            }
-            JsonNode n = root.get("proposedMarkdown");
-            if (n == null || n.isNull()) {
-                return "";
-            }
-            return n.asText("");
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private static boolean markdownAlreadyContainedInDoc(String docContent, String proposedMarkdown) {
-        if (!StringUtils.hasText(proposedMarkdown)) {
-            return true;
-        }
-        String doc = docContent == null ? "" : docContent;
-        String md = proposedMarkdown.trim();
-        if (doc.contains(md)) {
-            return true;
-        }
-        if (md.length() > 120) {
-            return doc.contains(md.substring(0, 120));
-        }
-        return false;
-    }
-
     /**
      * 将片段合并进需求文档最新正文并新增修订版本；片段为空则不写入。
      *
@@ -449,64 +283,5 @@ public class MagRequirementService {
         revisionMapper.insert(rev);
         docMapper.updateCurrentVersion(doc.getId(), next);
         return rev.getId();
-    }
-
-    /**
-     * 拍板通过后：若正文尚未包含池内提案则合并；变更通过时追加拍板说明。
-     */
-    private void syncRequirementDocAfterPoolDecision(
-            MagRequirementPoolItem item, MagPoolDecideRequest req, Long userId) {
-        if (item == null || req == null) {
-            return;
-        }
-        String decision = req.getDecision();
-        if (!MagConstants.DECISION_APPROVE_AS_IS.equals(decision)
-                && !MagConstants.DECISION_APPROVE_WITH_CHANGE.equals(decision)) {
-            return;
-        }
-        MagRequirementDoc doc = docMapper.selectByProjectId(item.getProjectId());
-        if (doc == null) {
-            return;
-        }
-        MagRequirementRevision latest = revisionMapper.selectLatest(doc.getId());
-        String latestContent = latest != null ? latest.getContent() : "";
-
-        if (MagConstants.DECISION_APPROVE_AS_IS.equals(decision)) {
-            String md = extractProposedMarkdown(item.getPayloadJson());
-            if (StringUtils.hasText(md) && !markdownAlreadyContainedInDoc(latestContent, md)) {
-                appendMergedRequirementRevision(item.getProjectId(), md, userId);
-            }
-            return;
-        }
-
-        // APPROVE_WITH_CHANGE
-        String mdChange = extractProposedMarkdown(item.getPayloadJson());
-        if (StringUtils.hasText(mdChange) && !markdownAlreadyContainedInDoc(latestContent, mdChange)) {
-            appendMergedRequirementRevision(item.getProjectId(), mdChange, userId);
-        }
-        if (StringUtils.hasText(req.getNote())) {
-            appendMergedRequirementRevision(
-                    item.getProjectId(),
-                    "## 拍板补充（变更通过）\n\n" + req.getNote().trim(),
-                    userId);
-        }
-    }
-
-    private Map<String, Object> poolRow(MagRequirementPoolItem it) {
-        Map<String, Object> m = new HashMap<>();
-        if (it == null) {
-            return m;
-        }
-        m.put("id", it.getId());
-        m.put("projectId", it.getProjectId());
-        m.put("state", it.getState());
-        m.put("revisionId", it.getRevisionId());
-        m.put("anchorJson", it.getAnchorJson());
-        m.put("payloadJson", it.getPayloadJson());
-        m.put("assignedDeciderUserId", it.getAssignedDeciderUserId());
-        m.put("temporalWorkflowId", it.getTemporalWorkflowId());
-        m.put("createdAt", it.getCreatedAt());
-        m.put("updatedAt", it.getUpdatedAt());
-        return m;
     }
 }

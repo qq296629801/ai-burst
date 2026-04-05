@@ -6,7 +6,7 @@ import io.agentscope.core.tool.ToolParam;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 产品（PRODUCT）职能：读取项目需求文档、提交「开发需求说明」候选到需求池，供评审合入。
+ * 产品（PRODUCT）职能：读取项目需求文档、将开发需求说明合并进需求文档新版本。
  */
 @RequiredArgsConstructor
 public final class MagProductRequirementTools {
@@ -38,7 +38,7 @@ public final class MagProductRequirementTools {
     @Tool(
             name = "mag_submit_dev_requirement_candidate",
             description =
-                    "根据需求文档整理「开发侧需求说明」，写入需求池并自动合并进需求文档新版本（无人工拍板）。"
+                    "根据需求文档整理「开发侧需求说明」，直接合并进需求文档新版本（无需求池）。"
                             + "summary 必填；proposedMarkdown 为建议正文（会并入 mag_requirement_revision.content）。"
                             + "后续以需求文档编辑与版本列表为确认来源。")
     public String submitDevRequirementCandidate(
@@ -52,9 +52,10 @@ public final class MagProductRequirementTools {
                     String anchorJson) {
         try {
             java.util.Map<String, Object> row =
-                    requirementService.submitRequirementPoolCandidateFromAgent(
+                    requirementService.mergeDevRequirementProposedFromAgent(
                             projectId, triggerUserId, summary, proposedMarkdown, anchorJson);
-            return "SUCCESS poolItemId=" + row.get("id");
+            Object revId = row.get("revisionId");
+            return revId != null ? "SUCCESS revisionId=" + revId : "SUCCESS (no content merge)";
         } catch (IllegalArgumentException e) {
             return "ERROR " + e.getMessage();
         } catch (Exception e) {

@@ -36,12 +36,9 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     expect(http.post).toHaveBeenCalledWith('/mag/tasks/9/request-next', { agentId: 2 })
   })
 
-  it('需求文档、池与变更分析', async () => {
+  it('需求文档与变更分析', async () => {
     await mag.magGetRequirementDoc(1)
     expect(http.get).toHaveBeenCalledWith('/mag/projects/1/requirement-doc')
-
-    await mag.magDecidePoolItem(5, { decision: 'APPROVE_AS_IS' })
-    expect(http.post).toHaveBeenCalledWith('/mag/requirement-pool/5/decide', { decision: 'APPROVE_AS_IS' })
 
     await mag.magReqDiff(1, 1, 2)
     expect(http.get).toHaveBeenCalledWith('/mag/projects/1/requirement-doc/diff', {
@@ -82,22 +79,12 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
     expect(http.post).toHaveBeenCalledWith('/mag/tasks/11/submit-complete', { rowVersion: 2 })
   })
 
-  it('产出物聚合', async () => {
-    await mag.magListWorkOutputs(5, { improvementLimit: 100, poolLimit: 50, revisionLimit: 10 })
-    expect(http.get).toHaveBeenCalledWith('/mag/projects/5/work-outputs', {
-      params: { improvementLimit: 100, poolLimit: 50, revisionLimit: 10 },
-    })
-  })
-
-  it('大屏、待办、定时任务与审计', async () => {
+  it('大屏、定时任务与编排', async () => {
     await mag.magDashboardSnapshot(12)
     expect(http.get).toHaveBeenCalledWith('/mag/dashboard/snapshot', { params: { projectId: 12 } })
 
     await mag.magListOrchestrationRuns(3, { limit: 30 })
     expect(http.get).toHaveBeenCalledWith('/mag/projects/3/orchestration-runs', { params: { limit: 30 } })
-
-    await mag.magTodosPage({ pageNum: 1, pageSize: 10 })
-    expect(http.get).toHaveBeenCalledWith('/mag/todos', { params: { pageNum: 1, pageSize: 10 } })
 
     await mag.magUpsertScheduledJob({ jobKey: 'j', cronExpr: '0 0 * * * ?', enabled: 1 })
     expect(http.put).toHaveBeenCalledWith('/mag/scheduled-jobs', {
@@ -106,7 +93,5 @@ describe('mag API（路径与方法与 OpenAPI / 测试用例对齐）', () => {
       enabled: 1,
     })
 
-    await mag.magListFetchAudit(8)
-    expect(http.get).toHaveBeenCalledWith('/mag/projects/8/fetch-audit')
   })
 })

@@ -6,12 +6,8 @@ import com.aiburst.mag.dto.MagImportBlueprintRequest;
 import com.aiburst.mag.dto.MagModuleUpsertRequest;
 import com.aiburst.mag.entity.MagKbEntry;
 import com.aiburst.mag.entity.MagModule;
-import com.aiburst.mag.entity.MagReleaseArchive;
 import com.aiburst.mag.mapper.MagKbEntryMapper;
 import com.aiburst.mag.mapper.MagModuleMapper;
-import com.aiburst.mag.mapper.MagReleaseArchiveMapper;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,9 +24,7 @@ public class MagModuleService {
 
     private final MagModuleMapper moduleMapper;
     private final MagAccessHelper accessHelper;
-    private final MagReleaseArchiveMapper releaseArchiveMapper;
     private final MagKbEntryMapper kbEntryMapper;
-    private final ObjectMapper objectMapper;
 
     public List<Map<String, Object>> list(Long projectId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -83,40 +77,6 @@ public class MagModuleService {
     public List<Map<String, Object>> importBlueprint(Long projectId, MagImportBlueprintRequest req, Long userId) {
         accessHelper.requireMember(projectId, userId);
         List<Map<String, Object>> created = new ArrayList<>();
-        if ("ARCHIVE".equalsIgnoreCase(req.getSourceType())) {
-            MagReleaseArchive ar = releaseArchiveMapper.selectById(req.getSourceId());
-            if (ar == null) {
-                throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
-            }
-            /* 跨项目引用归档：须具备 mag:kb:blueprint:import 等策略校验；首期允许任意有权限用户从任意归档 ID 导入蓝图（组织策略收紧时在服务层加校验） */
-            try {
-                if (ar.getSnapshotJson() != null && !ar.getSnapshotJson().isBlank()) {
-                    JsonNode root = objectMapper.readTree(ar.getSnapshotJson());
-                    JsonNode modules = root.get("modules");
-                    if (modules != null && modules.isArray()) {
-                        for (JsonNode n : modules) {
-                            MagModule m = new MagModule();
-                            m.setProjectId(projectId);
-                            m.setParentId(0L);
-                            m.setName(n.path("name").asText("imported-module"));
-                            m.setTag(n.path("tag").asText(null));
-                            m.setSortOrder(0);
-                            moduleMapper.insert(m);
-                            created.add(toRow(moduleMapper.selectById(m.getId())));
-                        }
-                    } else {
-                        MagModule m = newModuleFromLabel(projectId, "自归档 " + ar.getVersionLabel(), ar.getSnapshotJson());
-                        created.add(toRow(m));
-                    }
-                } else {
-                    created.add(toRow(newModuleFromLabel(projectId, "自归档 " + ar.getVersionLabel(), "{}")));
-                }
-            } catch (Exception e) {
-                MagModule m = newModuleFromLabel(projectId, "自归档 " + ar.getVersionLabel(), ar.getSnapshotJson());
-                created.add(toRow(m));
-            }
-            return created;
-        }
         if ("KB".equalsIgnoreCase(req.getSourceType())) {
             MagKbEntry kb = kbEntryMapper.selectById(req.getSourceId());
             if (kb == null) {
@@ -132,18 +92,7 @@ public class MagModuleService {
             created.add(toRow(moduleMapper.selectById(m.getId())));
             return created;
         }
-        throw new MagBusinessException(MagResultCode.MAG_UNKNOWN, "sourceType must be ARCHIVE or KB");
-    }
-
-    private MagModule newModuleFromLabel(Long projectId, String name, String snapshotSnippet) {
-        MagModule m = new MagModule();
-        m.setProjectId(projectId);
-        m.setParentId(0L);
-        m.setName(name);
-        m.setTag("blueprint");
-        m.setSortOrder(0);
-        moduleMapper.insert(m);
-        return moduleMapper.selectById(m.getId());
+        throw new MagBusinessException(MagResultCode.MAG_UNKNOWN, "sourceType must be KB");
     }
 
     private Map<String, Object> toRow(MagModule m) {
