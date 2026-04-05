@@ -97,6 +97,13 @@ public class MagAgentScopeRunService {
     @Value("${aiburst.mag.agentscope.call-timeout-seconds:120}")
     private int callTimeoutSeconds;
 
+    /**
+     * Reactor 对整段 ReAct 流 {@code collectList().block(timeout)} 的墙钟上限（秒）。
+     * 0 表示按单次 LLM 超时 × ReAct 迭代次数 × A2A 深度预算自动估算（避免嵌套 invoke_peer / PM 编排时过早超时）。
+     */
+    @Value("${aiburst.mag.agentscope.stream-block-timeout-seconds:0}")
+    private int streamBlockTimeoutSeconds;
+
     @Value("${aiburst.mag.agentscope.session-root:${java.io.tmpdir}/mag-agent-sessions}")
     private String sessionRoot;
 
@@ -260,7 +267,7 @@ public class MagAgentScopeRunService {
 
         String userLine = buildUserLine(isPm, agent, instruction);
 
-        long awaitSeconds = Math.max(1L, (long) callTimeoutSeconds + 30L);
+        long awaitSeconds = resolveStreamBlockTimeoutSeconds(iters);
         List<Msg> input = List.of(Msg.builder().role(MsgRole.USER).textContent(userLine).build());
         List<Event> events;
         try {
@@ -518,6 +525,23 @@ public class MagAgentScopeRunService {
                 + agent.getProjectId()
                 + "。\n说明："
                 + extra;
+    }
+
+    private static final long MAX_STREAM_BLOCK_SECONDS = 14_400L;
+
+    /**
+     * 单次 ReAct 订阅可能包含多轮 LLM + 工具（含同步嵌套 A2A），墙钟远大于单次 HTTP 超时。
+     */
+    private long resolveStreamBlockTimeoutSeconds(int reactIters) {
+        if (streamBlockTimeoutSeconds > 0) {
+            return Math.min(streamBlockTimeoutSeconds, MAX_STREAM_BLOCK_SECONDS);
+        }
+        long per = Math.max(1L, (long) callTimeoutSeconds);
+        int it = Math.max(1, reactIters);
+        int depthBudget = Math.max(1, Math.min(a2aMaxDepth, 8));
+        long estimated = per * it * depthBudget + 180L;
+        long floor = per + 30L;
+        return Math.min(Math.max(estimated, floor), MAX_STREAM_BLOCK_SECONDS);
     }
 
     private GenerateOptions generateOptions() {

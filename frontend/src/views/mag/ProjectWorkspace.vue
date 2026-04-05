@@ -1004,8 +1004,8 @@ const agentRoleOptions = [
 ]
 
 const POOL_STATE_LABELS = {
-  PENDING_USER: '待用户拍板',
-  USER_CONFIRMED_OK: '用户确认（原样）',
+  PENDING_USER: '待用户拍板（历史）',
+  USER_CONFIRMED_OK: '已并入需求文档',
   USER_CONFIRMED_CHANGE: '用户确认（有变更）',
   USER_REJECTED: '已拒绝',
   CLOSED: '已关闭（延期等）',
@@ -1760,6 +1760,7 @@ async function decide(row, decision) {
   await magDecidePoolItem(row.id, { decision })
   ElMessage.success('已处理')
   loadPool()
+  loadReq()
 }
 
 function openRelease() {

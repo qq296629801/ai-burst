@@ -37,6 +37,8 @@ aiburst:
       max-iters: 4
       pm-max-iters: 10
       call-timeout-seconds: 1200
+      # 整段 ReAct 流 block 墙钟上限（秒）；0=按 call-timeout × 迭代 × A2A 深度自动估算（默认 0）
+      # stream-block-timeout-seconds: 0
       # AgentScope 会话落盘目录：按 p{projectId}/a{agentId} 隔离，禁止跨项目复用
       session-root: ${java.io.tmpdir}/mag-agent-sessions
       a2a-max-depth: 5

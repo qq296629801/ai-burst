@@ -6,11 +6,15 @@ import com.aiburst.mag.mapper.MagAgentImprovementLogMapper;
 import com.aiburst.mag.mapper.MagAgentMapper;
 import com.aiburst.mag.MagBusinessException;
 import com.aiburst.mag.MagResultCode;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,6 +27,7 @@ public class MagImprovementLogService {
     private final MagAgentImprovementLogMapper improvementLogMapper;
     private final MagAgentMapper agentMapper;
     private final MagAccessHelper accessHelper;
+    private final ObjectMapper objectMapper;
 
     public List<Map<String, Object>> list(Long projectId, Long agentId, Long userId) {
         accessHelper.requireMember(projectId, userId);
@@ -41,7 +46,7 @@ public class MagImprovementLogService {
         log.setAgentId(agentId);
         log.setChangeType(req.getChangeType());
         log.setSummary(req.getSummary());
-        log.setDetailJson(req.getDetailJson());
+        log.setDetailJson(normalizeDetailJsonForMysql(req.getDetailJson()));
         log.setCreatedByUserId(userId);
         improvementLogMapper.insert(log);
         return toRow(log);
@@ -51,6 +56,32 @@ public class MagImprovementLogService {
         var ag = agentMapper.selectById(agentId);
         if (ag == null || !Objects.equals(ag.getProjectId(), projectId)) {
             throw new MagBusinessException(MagResultCode.MAG_NOT_FOUND);
+        }
+    }
+
+    /**
+     * {@code mag_agent_improvement_log.detail_json} 为 MySQL JSON 列，须为合法 JSON。
+     * 工具/API 常传入 Markdown 正文，此处包一层 {@code {"markdown":"..."}}；已是 JSON 的字符串则规范化后原样存储。
+     */
+    private String normalizeDetailJsonForMysql(String raw) {
+        if (raw == null) {
+            return "{}";
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "{}";
+        }
+        try {
+            JsonNode node = objectMapper.readTree(trimmed);
+            return objectMapper.writeValueAsString(node);
+        } catch (JsonProcessingException ignored) {
+            try {
+                Map<String, String> wrapper = new LinkedHashMap<>();
+                wrapper.put("markdown", raw);
+                return objectMapper.writeValueAsString(wrapper);
+            } catch (JsonProcessingException e) {
+                return "{\"markdown\":\"\"}";
+            }
         }
     }
 

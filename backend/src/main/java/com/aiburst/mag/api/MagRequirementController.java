@@ -57,7 +57,7 @@ public class MagRequirementController {
 
     @PostMapping("/projects/{projectId}/requirement-pool")
     @PreAuthorize("hasAuthority('mag:req:edit')")
-    @Operation(summary = "新增需求池项")
+    @Operation(summary = "新增需求池项（自动并入需求文档，不经待用户拍板）")
     public ApiResult<Map<String, Object>> createPoolItem(@PathVariable Long projectId,
                                                          @Valid @RequestBody MagPoolItemCreateRequest req) {
         return ApiResult.ok(requirementService.createPoolItem(projectId, req, SecurityUtils.currentUserId()));

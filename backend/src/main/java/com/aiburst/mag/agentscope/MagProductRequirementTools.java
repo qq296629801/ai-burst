@@ -38,8 +38,9 @@ public final class MagProductRequirementTools {
     @Tool(
             name = "mag_submit_dev_requirement_candidate",
             description =
-                    "根据需求文档整理「开发侧需求说明」候选，写入需求池（payload），"
-                            + "需经人工/项目经理决策后合入正式需求。summary 必填；proposedMarkdown 为建议正文。")
+                    "根据需求文档整理「开发侧需求说明」，写入需求池并自动合并进需求文档新版本（无人工拍板）。"
+                            + "summary 必填；proposedMarkdown 为建议正文（会并入 mag_requirement_revision.content）。"
+                            + "后续以需求文档编辑与版本列表为确认来源。")
     public String submitDevRequirementCandidate(
             @ToolParam(name = "summary", description = "一句话摘要") String summary,
             @ToolParam(

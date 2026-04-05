@@ -22,6 +22,7 @@ import com.aiburst.mag.mapper.MagTaskMapper;
 import com.aiburst.mag.mapper.MagThreadMapper;
 import com.aiburst.rbac.service.PermissionCacheService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -193,12 +194,25 @@ public class MagRequirementService {
         accessHelper.requireMember(projectId, userId);
         MagRequirementPoolItem it = new MagRequirementPoolItem();
         it.setProjectId(projectId);
-        it.setState(MagConstants.POOL_PENDING_USER);
+        // 需求池不再走「待用户拍板」：创建即视为已应用，正式确认以需求文档版本为准。
+        it.setState(MagConstants.USER_CONFIRMED_OK);
         it.setRevisionId(req.getRevisionId());
         it.setAnchorJson(req.getAnchorJson());
         it.setPayloadJson(req.getPayloadJson());
         it.setAssignedDeciderUserId(req.getAssignedDeciderUserId());
         poolMapper.insert(it);
+        String proposed = extractProposedMarkdown(it.getPayloadJson());
+        boolean needUpdate = false;
+        if (StringUtils.hasText(proposed)) {
+            Long newRevId = appendMergedRequirementRevision(projectId, proposed, userId);
+            if (newRevId != null) {
+                it.setRevisionId(newRevId);
+                needUpdate = true;
+            }
+        }
+        if (needUpdate) {
+            poolMapper.update(it);
+        }
         return poolRow(poolMapper.selectById(it.getId()));
     }
 
@@ -229,6 +243,8 @@ public class MagRequirementService {
             }
         }
         poolMapper.update(item);
+
+        syncRequirementDocAfterPoolDecision(item, req, userId);
     }
 
     @Transactional
@@ -368,6 +384,112 @@ public class MagRequirementService {
             return "CLOSED";
         }
         throw new MagBusinessException(MagResultCode.MAG_POOL_STATE_INVALID, "unknown decision");
+    }
+
+    /**
+     * 从需求池 {@code payload_json} 解析 {@code proposedMarkdown}（产品 Agent / 前端写入）。
+     */
+    private String extractProposedMarkdown(String payloadJson) {
+        if (!StringUtils.hasText(payloadJson)) {
+            return "";
+        }
+        try {
+            JsonNode root = objectMapper.readTree(payloadJson.trim());
+            if (root == null || !root.has("proposedMarkdown")) {
+                return "";
+            }
+            JsonNode n = root.get("proposedMarkdown");
+            if (n == null || n.isNull()) {
+                return "";
+            }
+            return n.asText("");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static boolean markdownAlreadyContainedInDoc(String docContent, String proposedMarkdown) {
+        if (!StringUtils.hasText(proposedMarkdown)) {
+            return true;
+        }
+        String doc = docContent == null ? "" : docContent;
+        String md = proposedMarkdown.trim();
+        if (doc.contains(md)) {
+            return true;
+        }
+        if (md.length() > 120) {
+            return doc.contains(md.substring(0, 120));
+        }
+        return false;
+    }
+
+    /**
+     * 将片段合并进需求文档最新正文并新增修订版本；片段为空则不写入。
+     *
+     * @return 新修订 id，未写入则 {@code null}
+     */
+    private Long appendMergedRequirementRevision(Long projectId, String fragmentMarkdown, Long userId) {
+        if (!StringUtils.hasText(fragmentMarkdown)) {
+            return null;
+        }
+        MagRequirementDoc doc = docMapper.selectByProjectId(projectId);
+        if (doc == null) {
+            return null;
+        }
+        MagRequirementRevision latest = revisionMapper.selectLatest(doc.getId());
+        String base = latest == null || latest.getContent() == null ? "" : latest.getContent().trim();
+        String fragment = fragmentMarkdown.trim();
+        String newContent = base.isEmpty() ? fragment : base + "\n\n---\n\n" + fragment;
+        int next = doc.getCurrentVersion() + 1;
+        MagRequirementRevision rev = new MagRequirementRevision();
+        rev.setDocId(doc.getId());
+        rev.setVersion(next);
+        rev.setContent(newContent);
+        rev.setAuthorUserId(userId);
+        revisionMapper.insert(rev);
+        docMapper.updateCurrentVersion(doc.getId(), next);
+        return rev.getId();
+    }
+
+    /**
+     * 拍板通过后：若正文尚未包含池内提案则合并；变更通过时追加拍板说明。
+     */
+    private void syncRequirementDocAfterPoolDecision(
+            MagRequirementPoolItem item, MagPoolDecideRequest req, Long userId) {
+        if (item == null || req == null) {
+            return;
+        }
+        String decision = req.getDecision();
+        if (!MagConstants.DECISION_APPROVE_AS_IS.equals(decision)
+                && !MagConstants.DECISION_APPROVE_WITH_CHANGE.equals(decision)) {
+            return;
+        }
+        MagRequirementDoc doc = docMapper.selectByProjectId(item.getProjectId());
+        if (doc == null) {
+            return;
+        }
+        MagRequirementRevision latest = revisionMapper.selectLatest(doc.getId());
+        String latestContent = latest != null ? latest.getContent() : "";
+
+        if (MagConstants.DECISION_APPROVE_AS_IS.equals(decision)) {
+            String md = extractProposedMarkdown(item.getPayloadJson());
+            if (StringUtils.hasText(md) && !markdownAlreadyContainedInDoc(latestContent, md)) {
+                appendMergedRequirementRevision(item.getProjectId(), md, userId);
+            }
+            return;
+        }
+
+        // APPROVE_WITH_CHANGE
+        String mdChange = extractProposedMarkdown(item.getPayloadJson());
+        if (StringUtils.hasText(mdChange) && !markdownAlreadyContainedInDoc(latestContent, mdChange)) {
+            appendMergedRequirementRevision(item.getProjectId(), mdChange, userId);
+        }
+        if (StringUtils.hasText(req.getNote())) {
+            appendMergedRequirementRevision(
+                    item.getProjectId(),
+                    "## 拍板补充（变更通过）\n\n" + req.getNote().trim(),
+                    userId);
+        }
     }
 
     private Map<String, Object> poolRow(MagRequirementPoolItem it) {
