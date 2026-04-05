@@ -33,7 +33,7 @@ public final class MagMainAgentPmRequestTools {
                     "本子线主 Agent 专用：当子线任务已饱和、无活可分，或需要项目经理补充/调整派工与优先级时调用。"
                             + "将触发项目中项目经理（PM）Agent 的一轮编排，由其使用派工工具处理。"
                             + "situationSummary 须说明当前进度、缺口或请求（勿为空）。"
-                            + "门禁：需求正文未就绪时仅 PRODUCT 主 Agent 可调；TEST 主 Agent 须待 FRONTEND/BACKEND 任务均已结项。")
+                            + "门禁：需求正文未就绪时仅 PRODUCT 主 Agent 可调；FRONTEND 主 Agent 须待全部 BACKEND 任务均已结项；TEST 主 Agent 须待 FRONTEND 与 BACKEND 任务均已结项。")
     public String askPmForNextTasks(
             @ToolParam(
                             name = "situationSummary",

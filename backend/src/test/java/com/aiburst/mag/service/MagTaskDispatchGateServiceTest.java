@@ -93,6 +93,59 @@ class MagTaskDispatchGateServiceTest {
     }
 
     @Test
+    void dispatch_frontend_blocked_when_backend_open() {
+        when(requirementDocMapper.selectByProjectId(PID)).thenReturn(doc);
+        MagRequirementRevision rev = new MagRequirementRevision();
+        rev.setContent("# spec");
+        when(requirementRevisionMapper.selectLatest(doc.getId())).thenReturn(rev);
+
+        MagTask openBe = new MagTask();
+        openBe.setState(MagConstants.TASK_IN_PROGRESS);
+        openBe.setAssigneeAgentId(2L);
+        when(taskMapper.selectByProjectId(PID)).thenReturn(List.of(openBe));
+        when(agentMapper.selectById(2L)).thenReturn(agent(2L, "BACKEND"));
+        when(agentMapper.selectById(6L)).thenReturn(agent(6L, "FRONTEND"));
+
+        assertThatThrownBy(() -> gateService.validateAssigneeForDispatchOrReassign(PID, 6L))
+                .isInstanceOf(MagBusinessException.class)
+                .extracting("resultCode")
+                .isEqualTo(MagResultCode.MAG_DISPATCH_FRONTEND_BLOCKED_BY_BACKEND);
+    }
+
+    @Test
+    void dispatch_frontend_allowed_when_no_backend_open() {
+        when(requirementDocMapper.selectByProjectId(PID)).thenReturn(doc);
+        MagRequirementRevision rev = new MagRequirementRevision();
+        rev.setContent("# spec");
+        when(requirementRevisionMapper.selectLatest(doc.getId())).thenReturn(rev);
+
+        when(taskMapper.selectByProjectId(PID)).thenReturn(List.of());
+        when(agentMapper.selectById(7L)).thenReturn(agent(7L, "FRONTEND"));
+
+        gateService.validateAssigneeForDispatchOrReassign(PID, 7L);
+    }
+
+    @Test
+    void ask_pm_blocked_for_frontend_when_backend_open() {
+        when(requirementDocMapper.selectByProjectId(PID)).thenReturn(doc);
+        MagRequirementRevision rev = new MagRequirementRevision();
+        rev.setContent("# spec");
+        when(requirementRevisionMapper.selectLatest(doc.getId())).thenReturn(rev);
+
+        MagTask openBe = new MagTask();
+        openBe.setState(MagConstants.TASK_PENDING);
+        openBe.setAssigneeAgentId(2L);
+        when(taskMapper.selectByProjectId(PID)).thenReturn(List.of(openBe));
+        when(agentMapper.selectById(2L)).thenReturn(agent(2L, "BACKEND"));
+        when(agentMapper.selectById(6L)).thenReturn(agent(6L, "FRONTEND"));
+
+        assertThatThrownBy(() -> gateService.checkMainAgentMayRequestPmDispatch(PID, 6L))
+                .isInstanceOf(MagBusinessException.class)
+                .extracting("resultCode")
+                .isEqualTo(MagResultCode.MAG_DISPATCH_FRONTEND_BLOCKED_BY_BACKEND);
+    }
+
+    @Test
     void dispatch_test_blocked_when_backend_open() {
         when(requirementDocMapper.selectByProjectId(PID)).thenReturn(doc);
         MagRequirementRevision rev = new MagRequirementRevision();

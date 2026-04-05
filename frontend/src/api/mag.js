@@ -52,7 +52,7 @@ export function magCreateTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks`, data)
 }
 
-/** 项目经理派工：创建任务并指定执行 Agent（流水线校验失败时 409，业务码 41016–41018） */
+/** 项目经理派工：创建任务并指定执行 Agent（流水线校验失败时 409，业务码 41016–41019） */
 export function magDispatchTask(projectId, data) {
   return http.post(`/mag/projects/${projectId}/tasks/dispatch`, data)
 }

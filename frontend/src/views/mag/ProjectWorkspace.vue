@@ -326,7 +326,7 @@
       show-icon
       class="mag-dispatch-hint"
       title="派工顺序（系统校验）"
-      description="需求正文为空时仅可派产品；产品有未结项任务时勿再派产品；派测试前须前端/后端任务均已结项。"
+      description="需求正文为空时仅可派产品；产品有未结项任务时勿再派产品；派前端前须后端任务均已结项；派测试前须前端与后端任务均已结项。"
     />
     <el-form label-width="100px" class="mag-dispatch-form">
       <el-form-item label="标题" required><el-input v-model="dispatchForm.title" placeholder="任务标题" /></el-form-item>

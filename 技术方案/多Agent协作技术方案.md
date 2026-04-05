@@ -299,7 +299,7 @@
 
 上表中含 **§17** 新增列出的接口为**全量能力清单**组成部分；当前代码若未实现，须按迭代补齐，**不得从产品范围删除**。
 
-**派工流水线（与产品 §4.2 对齐，后端已实现）**：`MagTaskDispatchGateService` 在 **`POST .../tasks/dispatch`、带指派执行人的任务创建、`POST .../pm-reassign`** 中校验：① `mag_requirement_revision` 最新正文 trim 后非空前，**仅**可向 `PRODUCT` 角色 Agent 指派新任务；② 存在指派给 `PRODUCT` 且 `state ∈ {PENDING,IN_PROGRESS,BLOCKED}` 的任务时，**禁止**再向任一 `PRODUCT` Agent 新建派工；③ 向 `TEST` 指派前，须**无**上述未结项且指派给 `FRONTEND` 或 `BACKEND` 的任务。主 Agent 工具 **`mag_ask_pm_for_next_tasks`** 同步门禁（`PRODUCT` 豁免①；`TEST` 另受③约束）。失败返回 **409** 与 §19.7 码 **41016–41018**。
+**派工流水线（与产品 §4.2 对齐，后端已实现）**：`MagTaskDispatchGateService` 在 **`POST .../tasks/dispatch`、带指派执行人的任务创建、`POST .../pm-reassign`** 中校验：① `mag_requirement_revision` 最新正文 trim 后非空前，**仅**可向 `PRODUCT` 角色 Agent 指派新任务；② 存在指派给 `PRODUCT` 且 `state ∈ {PENDING,IN_PROGRESS,BLOCKED}` 的任务时，**禁止**再向任一 `PRODUCT` Agent 新建派工；③ 向 `FRONTEND` 指派前，须**无**上述未结项且指派给 `BACKEND` 的任务（**后端先于前端**）；④ 向 `TEST` 指派前，须**无**上述未结项且指派给 `FRONTEND` 或 `BACKEND` 的任务（**测试在前后端之后**）。主 Agent 工具 **`mag_ask_pm_for_next_tasks`** 同步门禁（`PRODUCT` 豁免①；`FRONTEND` 另受③约束；`TEST` 另受④约束）。失败返回 **409** 与 §19.7 码 **41016–41019**。
 
 **OpenAPI 约定（实现期）**：SpringDoc 等暴露 `/v3/api-docs`；**分页** Query：`pageNum`（默认 1）、`pageSize`（默认 10，**上限 100**）；**错误体**沿用全局 `ApiResult`；**幂等**：部分写接口可带 `Idempotency-Key` 头（可选）。
 
@@ -816,7 +816,8 @@ CREATE TABLE mag_scheduled_job_config (
 | 41014 | `MAG_POOL_STATE_INVALID` | 409 | 需求池项非待拍板态却调用 decide |
 | 41016 | `MAG_DISPATCH_REQUIREMENT_NOT_READY` | 409 | 需求正文未就绪却向非产品派工，或非产品主 Agent 调用 `mag_ask_pm_for_next_tasks` |
 | 41017 | `MAG_DISPATCH_PRODUCT_PIPELINE_BLOCKED` | 409 | 产品职能尚有未结项任务时再次向产品 Agent 派工 |
-| 41018 | `MAG_DISPATCH_TEST_BLOCKED_BY_DEV` | 409 | 开发职能尚有未结项任务时向测试派工，或测试主 Agent 向 PM 要活 |
+| 41018 | `MAG_DISPATCH_TEST_BLOCKED_BY_DEV` | 409 | 前端或后端尚有未结项任务时向测试派工，或测试主 Agent 向 PM 要活 |
+| 41019 | `MAG_DISPATCH_FRONTEND_BLOCKED_BY_BACKEND` | 409 | 后端尚有未结项任务时向前端派工，或前端主 Agent 向 PM 要活 |
 | 41020 | `MAG_TEMPORAL_START_FAILED` | 502 | 启动/信号 Workflow 失败（Temporal 不可用或参数非法） |
 | 41021 | `MAG_TEMPORAL_QUERY_TIMEOUT` | 504 | 等待 Workflow/Activity 结果超时（若暴露同步接口） |
 | 41999 | `MAG_UNKNOWN` | 500 | 未分类域错误（应记日志并迭代补码） |

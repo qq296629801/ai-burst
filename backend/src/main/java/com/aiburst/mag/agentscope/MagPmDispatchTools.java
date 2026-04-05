@@ -142,7 +142,7 @@ public final class MagPmDispatchTools {
                     "为当前项目创建任务并指派执行 Agent（项目经理派工）。"
                             + "assigneeAgentId 必须来自 list_dispatchable_agents。"
                             + "流水线：需求正文为空时仅可派给 PRODUCT；PRODUCT 有未结项任务时勿再派 PRODUCT；"
-                            + "派给 TEST 前须无 FRONTEND/BACKEND 未结项任务。")
+                            + "派给 FRONTEND 前须无 BACKEND 未结项任务；派给 TEST 前须无 FRONTEND/BACKEND 未结项任务。")
     public String dispatchTask(
             @ToolParam(name = "title", description = "任务标题") String title,
             @ToolParam(name = "assigneeAgentId", description = "执行 Agent 的数字 id（本项目）")

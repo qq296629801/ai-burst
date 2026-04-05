@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 项目经理派工与「向 PM 要活」的流水线门禁：需求文档就绪、产品单飞、测试在开发结项之后。
+ * 项目经理派工与「向 PM 要活」的流水线门禁：需求文档就绪、产品单飞、后端先于前端、测试在前后端均结项之后。
  */
 @Service
 @RequiredArgsConstructor
@@ -59,11 +59,19 @@ public class MagTaskDispatchGateService {
             }
         }
 
+        if ("FRONTEND".equals(role)) {
+            if (countOpenTasksForRole(projectId, "BACKEND") > 0) {
+                throw new MagBusinessException(
+                        MagResultCode.MAG_DISPATCH_FRONTEND_BLOCKED_BY_BACKEND,
+                        "后端（BACKEND）尚有未结项任务（待处理/进行中/阻塞）：须待后端任务均已结项后，方可向前端（FRONTEND）Agent 派工。");
+            }
+        }
+
         if ("TEST".equals(role)) {
             if (countOpenTasksForRoles(projectId, "FRONTEND", "BACKEND") > 0) {
                 throw new MagBusinessException(
                         MagResultCode.MAG_DISPATCH_TEST_BLOCKED_BY_DEV,
-                        "前端/后端尚有未结项任务或未完成产出闭环：须待对应开发任务均已结项后，方可向测试（TEST）Agent 派工。");
+                        "前端/后端尚有未结项任务：须待前后端开发任务均已结项后，方可向测试（TEST）Agent 派工。");
             }
         }
     }
@@ -85,6 +93,13 @@ public class MagTaskDispatchGateService {
             throw new MagBusinessException(
                     MagResultCode.MAG_DISPATCH_REQUIREMENT_NOT_READY,
                     "需求文档尚无有效正文前，仅产品（PRODUCT）职能主 Agent 可向项目经理请求派工。");
+        }
+        if ("FRONTEND".equals(self.getRoleType())) {
+            if (countOpenTasksForRole(projectId, "BACKEND") > 0) {
+                throw new MagBusinessException(
+                        MagResultCode.MAG_DISPATCH_FRONTEND_BLOCKED_BY_BACKEND,
+                        "后端尚有未结项任务时，前端（FRONTEND）职能主 Agent 不可向项目经理要派工。");
+            }
         }
         if ("TEST".equals(self.getRoleType())) {
             if (countOpenTasksForRoles(projectId, "FRONTEND", "BACKEND") > 0) {

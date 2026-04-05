@@ -468,7 +468,8 @@ public class MagAgentScopeRunService {
                     + "派工前若不清楚执行人 id，必须先调用 list_dispatchable_agents。"
                     + "**派工流水线（系统强制）**：① 需求文档尚无有效正文时，**只能**向产品（PRODUCT）职能派工；"
                     + "② 产品职能存在未结项任务（PENDING/IN_PROGRESS/BLOCKED）时，**不得**再向任何产品 Agent 派新工；"
-                    + "③ 向测试（TEST）派工前，须确保本项目内指派给前端（FRONTEND）或后端（BACKEND）的任务**均已 DONE**（无开发侧未结项任务）。"
+                    + "③ 向前端（FRONTEND）派工前，须确保本项目内指派给后端（BACKEND）的任务**均已 DONE**（后端先于前端）；"
+                    + "④ 向测试（TEST）派工前，须确保指派给前端（FRONTEND）**与**后端（BACKEND）的任务**均已 DONE**（测试在前后端之后）。"
                     + "每次派工后或需要掌握全局时，应调用 list_project_tasks 与 list_project_modules，"
                     + "按任务 state（PENDING/IN_PROGRESS/BLOCKED/DONE）与模块覆盖分析进度与未完项；"
                     + "若仍有明确缺口且规则允许，继续 dispatch_task；若当前无合适新增任务、应等待执行方推进或等待各职能主 Agent 通过 mag_ask_pm_for_next_tasks 要活，"
@@ -510,7 +511,7 @@ public class MagAgentScopeRunService {
         if (agent.getParentAgentId() == null) {
             return " 你是本子线主 Agent（配置中无上级 parent_agent）：当本子线已无活可分、或需要项目经理补充/调整派工与优先级时，"
                     + "应调用 mag_ask_pm_for_next_tasks(situationSummary) 触发项目经理 Agent 编排（对方将使用派工工具）。"
-                    + "**门禁**：需求正文未就绪时仅产品（PRODUCT）主 Agent 可调用；测试（TEST）主 Agent 另须待全部前端/后端任务均已结项。"
+                    + "**门禁**：需求正文未就绪时仅产品（PRODUCT）主 Agent 可调用；前端（FRONTEND）主 Agent 须待全部后端（BACKEND）任务均已结项；测试（TEST）主 Agent 须待前端与后端任务均已结项。"
                     + "子 Agent 勿调用该工具，应通过 invoke_peer_agent 联系主 Agent 或协调线程要活。 ";
         }
         return " 你是子 Agent（存在上级 parent_agent）：申领下一项工作时优先使用 invoke_peer_agent 联系主 Agent（instruction 写明当前任务与需要的下一项）；"
